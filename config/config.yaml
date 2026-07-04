@@ -1,0 +1,36 @@
+# Project Cognition — default configuration.
+# Secrets (API keys) never go here — they live in `.env` only.
+
+exchange:
+  id: bybit
+  # Bybit's unified account category CCXT needs for derivatives/spot routing.
+  category: spot
+
+symbols:
+  - BTC/USDT
+  - ETH/USDT
+
+timeframes:
+  - "1m"
+  - "5m"
+
+history:
+  years: 5
+  # Bybit's public OHLCV endpoint max candles per request (CCXT paginates for us).
+  fetch_limit: 1000
+  # Seconds to sleep between paginated requests, on top of CCXT's built-in
+  # rate limiter, to stay well clear of Bybit's public endpoint limits.
+  request_pause_seconds: 0.2
+
+data_quality:
+  # A gap larger than this many expected candles is flagged as an outage.
+  max_gap_multiple: 2
+  # Price move between consecutive candles beyond this many standard
+  # deviations of recent returns is flagged as an outlier candidate.
+  outlier_zscore: 6.0
+  outlier_lookback: 200
+
+paths:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  log_dir: logs
