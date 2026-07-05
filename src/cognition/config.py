@@ -72,6 +72,40 @@ class PathsConfig(BaseModel):
     raw_dir: str = "data/raw"
     processed_dir: str = "data/processed"
     log_dir: str = "logs"
+    reports_dir: str = "reports"
+
+
+class WalkForwardConfig(BaseModel):
+    train_days: int = 90
+    test_days: int = 30
+    warmup_bars: int = 200
+
+
+class MonteCarloConfig(BaseModel):
+    runs: int = 50
+    noise_scale: float = 0.25
+
+
+class BacktestConfig(BaseModel):
+    initial_equity: float = 10_000.0
+    taker_fee: float = 0.001
+    slippage_base: float = 0.001
+    slippage_high_vol: float = 0.005
+    latency_bars: int = 1
+    fill_ratio: float = 1.0
+    risk_per_trade: float = 0.01
+    max_position_fraction: float = 0.95
+    regime_window_days: int = 7
+    regime_threshold: float = 0.03
+    lockbox_months: int = 6
+    walkforward: WalkForwardConfig = Field(default_factory=WalkForwardConfig)
+    montecarlo: MonteCarloConfig = Field(default_factory=MonteCarloConfig)
+
+    @model_validator(mode="after")
+    def _enforce_risk_cap(self) -> "BacktestConfig":
+        if self.risk_per_trade > 0.01:
+            raise ValueError("risk_per_trade may not exceed 0.01 (1%) — non-negotiable project rule")
+        return self
 
 
 class AppConfig(BaseModel):
@@ -80,6 +114,7 @@ class AppConfig(BaseModel):
     timeframes: list[str] = Field(default_factory=lambda: ["1m", "5m"])
     history: HistoryConfig = Field(default_factory=HistoryConfig)
     data_quality: DataQualityConfig = Field(default_factory=DataQualityConfig)
+    backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
 
     def resolve_path(self, relative: str) -> Path:
@@ -98,6 +133,10 @@ class AppConfig(BaseModel):
     @property
     def log_dir(self) -> Path:
         return self.resolve_path(self.paths.log_dir)
+
+    @property
+    def reports_dir(self) -> Path:
+        return self.resolve_path(self.paths.reports_dir)
 
 
 def load_app_config(path: Path | None = None) -> AppConfig:

@@ -30,7 +30,31 @@ data_quality:
   outlier_zscore: 6.0
   outlier_lookback: 200
 
+# Backtesting cost model and validation harness. Fees/slippage are the
+# conservative end of the spec: taker 0.1%, slippage 0.1% base / 0.5%
+# during high-volatility candles.
+backtest:
+  initial_equity: 10000
+  taker_fee: 0.001
+  slippage_base: 0.001
+  slippage_high_vol: 0.005
+  latency_bars: 1
+  fill_ratio: 1.0
+  risk_per_trade: 0.01        # hard cap — values above 1% are rejected
+  max_position_fraction: 0.95
+  regime_window_days: 7
+  regime_threshold: 0.03
+  lockbox_months: 6           # most recent N months never used in training
+  walkforward:
+    train_days: 90
+    test_days: 30
+    warmup_bars: 200
+  montecarlo:
+    runs: 50
+    noise_scale: 0.25
+
 paths:
   raw_dir: data/raw
   processed_dir: data/processed
   log_dir: logs
+  reports_dir: reports

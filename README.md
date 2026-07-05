@@ -2,10 +2,43 @@
 
 Self-learning, ensemble-based AI crypto scalping system for Bybit
 (BTC/USDT, ETH/USDT). Built milestone by milestone per the architecture
-document; this repo currently implements **Milestone 1 — Data Foundation**
-only.
+document; this repo currently implements **Milestones 1–2**.
 
-## Status: Milestone 1 — Data Foundation
+## Status: Milestone 2 — Backtesting Engine
+
+Implements:
+- **Cost-realistic simulator** (`src/cognition/backtest/simulator.py`):
+  event-driven, per-bar engine. Taker fees (0.1%), regime-aware slippage
+  (0.1% base / 0.5% in high-volatility candles), order latency (signals
+  fill at the *next* bar open — no lookahead), partial fills, conservative
+  intra-bar ordering (stop assumed hit before target), gap handling.
+  Position sizing risks a fixed ≤1% of equity per trade off the stop
+  distance; the 1% cap is enforced in code and cannot be configured higher.
+- **Walk-forward harness**: train window → test window → roll forward;
+  test windows get warmup bars for indicators but can't trade in them.
+- **Out-of-sample lockbox**: most recent 6 months split off before
+  anything touches the data.
+- **Monte Carlo robustness**: volatility-scaled price-path perturbation,
+  N runs, percentile summary.
+- **Regime-split reporting**: trades bucketed by bull/bear/sideways
+  (trailing-return labels, no lookahead) and by session, with the
+  architecture doc's gate-to-live pass criteria checked explicitly.
+- **Dummy SMA-crossover strategy** to prove the plumbing (it loses money
+  after costs — expected; that's the cost model working, not a bug).
+
+Run it:
+
+```bash
+python scripts/run_backtest.py                      # synthetic-data demo
+python scripts/run_backtest.py --data data/processed/BTC_USDT_1m.parquet
+```
+
+Prints the full report and saves it under `reports/`. A custom
+event-driven engine was chosen over VectorBT/Backtrader because the RL
+agents (Milestone 3) need a stepping environment to train against — one
+engine, one cost model, shared by backtesting and training.
+
+## Milestone 1 — Data Foundation (complete)
 
 Implements:
 - Project scaffold, YAML config + `.env` secrets (pydantic-validated)
@@ -85,11 +118,16 @@ source .venv/bin/activate
 python -m pytest -q
 ```
 
-27 tests cover: config loading and the live-trading safety guard, the
+64 tests cover: config loading and the live-trading safety guard, the
 Bybit client wrapper (sandbox mode, credential handling, retry behavior
 on network errors, mocked — no real network calls), the downloader's
 resume logic (mocked), data-quality detection (gaps/duplicates/outliers
-on synthetic data), and the feature pipeline.
+on synthetic data), the feature pipeline, and the backtest framework —
+cost model arithmetic (fees, adverse slippage both directions, regime
+widening), engine mechanics (latency fills, stop/target/both-hit/gap
+handling, risk-capped sizing, partial fills, force close, no-lookahead),
+metrics, regime labeling, walk-forward window integrity, lockbox split,
+and Monte Carlo reproducibility.
 
 ## Known limitation in this environment
 
@@ -113,6 +151,6 @@ code path is identical.
 
 ## Next milestone
 
-Milestone 2 — Backtesting Engine (cost-realistic simulator, walk-forward
-harness, Monte Carlo module, regime-split reporting) — **on hold pending
-your review and approval of Milestone 1.**
+Milestone 3 — Single Agent Prototype (momentum agent, DQN/actor-critic,
+learning loop verified against this backtester) — **on hold pending
+review and approval of Milestone 2.**
