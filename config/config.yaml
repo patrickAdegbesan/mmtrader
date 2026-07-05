@@ -53,8 +53,23 @@ backtest:
     runs: 50
     noise_scale: 0.25
 
+# RL agent training (Milestone 3+). Stop/take-profit come out of the
+# model, scaled by current volatility and clamped to these bounds; the
+# Risk Engine adds its own hard clamps in Milestone 5.
+training:
+  episodes: 60
+  episode_bars: 720
+  eval_every: 10
+  eval_fraction: 0.2
+  seed: 0
+  vol_stop_scale: 3.0
+  min_stop_pct: 0.002
+  max_stop_pct: 0.02
+  reward_risk: 1.5
+
 paths:
   raw_dir: data/raw
   processed_dir: data/processed
   log_dir: logs
   reports_dir: reports
+  models_dir: models

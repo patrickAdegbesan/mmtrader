@@ -73,6 +73,21 @@ class PathsConfig(BaseModel):
     processed_dir: str = "data/processed"
     log_dir: str = "logs"
     reports_dir: str = "reports"
+    models_dir: str = "models"
+
+
+class TrainingConfig(BaseModel):
+    episodes: int = 60
+    episode_bars: int = 720
+    eval_every: int = 10
+    eval_fraction: float = 0.2
+    seed: int = 0
+    # Volatility-adjusted SL/TP mapping (model outputs, later clamped by
+    # the Risk Engine).
+    vol_stop_scale: float = 3.0
+    min_stop_pct: float = 0.002
+    max_stop_pct: float = 0.02
+    reward_risk: float = 1.5
 
 
 class WalkForwardConfig(BaseModel):
@@ -115,6 +130,7 @@ class AppConfig(BaseModel):
     history: HistoryConfig = Field(default_factory=HistoryConfig)
     data_quality: DataQualityConfig = Field(default_factory=DataQualityConfig)
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
+    training: TrainingConfig = Field(default_factory=TrainingConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
 
     def resolve_path(self, relative: str) -> Path:
@@ -137,6 +153,10 @@ class AppConfig(BaseModel):
     @property
     def reports_dir(self) -> Path:
         return self.resolve_path(self.paths.reports_dir)
+
+    @property
+    def models_dir(self) -> Path:
+        return self.resolve_path(self.paths.models_dir)
 
 
 def load_app_config(path: Path | None = None) -> AppConfig:

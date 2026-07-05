@@ -4,7 +4,54 @@ Self-learning, ensemble-based AI crypto scalping system for Bybit
 (BTC/USDT, ETH/USDT). Built milestone by milestone per the architecture
 document; this repo currently implements **Milestones 1–2**.
 
-## Status: Milestone 2 — Backtesting Engine
+## Status: Milestone 3 — Single Agent Prototype
+
+Implements the momentum agent trained end-to-end with the learning loop
+verified against the backtester:
+
+- **RL environment** (`src/cognition/agents/env.py`): gym-style, steps
+  bar-by-bar with the SAME cost arithmetic as the backtester (next-bar
+  execution, adverse regime-aware slippage, fees, stop-before-target).
+  Reward = R-multiple of each closed trade after all costs (risk-adjusted,
+  per the spec — never raw profit), plus a small holding penalty.
+- **DQN with actor-critic components** (`networks.py`, `dqn.py`): dueling
+  architecture — shared trunk feeding a state-value head (critic) and an
+  advantage-over-actions head (actor stream); Double-DQN updates, replay
+  buffer, target network, epsilon-greedy exploration.
+- **Learned, volatility-adjusted SL/TP** (`actions.py`): actions carry
+  stop tightness; stops scale with current volatility, clamped to
+  configured bounds (the Risk Engine adds hard clamps in Milestone 5).
+  Sizing always risks ≤1% of equity — enforced in the env exactly as in
+  the backtester.
+- **Versioned model registry** (`src/cognition/learning/registry.py`):
+  every checkpoint is an immutable version with metadata; LATEST is a
+  movable pointer, so rollback = activate an older version. No silent
+  updates possible.
+- **Trainer** (`trainer.py`): episodes over random train-slice windows,
+  periodic greedy evaluation on a held-out tail slice (normalization
+  stats fitted on train only — no leakage), checkpoint per eval.
+- **Backtester adapter** (`momentum.py`): a trained agent plugs into the
+  Milestone-2 engine as a Strategy, so walk-forward/Monte Carlo/regime
+  reports all work on agents.
+
+Run it:
+
+```bash
+python scripts/train_momentum.py                    # synthetic demo
+python scripts/train_momentum.py --data data/processed/BTC_USDT_1m.parquet
+```
+
+Prints the learning curve (untrained baseline → periodic evals), saves
+versioned checkpoints under `models/momentum/`, then runs the trained
+agent through the cost-inclusive backtester. Exit code 0 iff the final
+eval beats the untrained baseline.
+
+The pytest acceptance test (`tests/test_learning_loop.py`) trains a
+seeded agent on a strongly trending synthetic market and asserts the
+learning loop (a) improves eval reward over the untrained baseline and
+(b) reaches profitability after costs on that easy market.
+
+## Milestone 2 — Backtesting Engine (complete)
 
 Implements:
 - **Cost-realistic simulator** (`src/cognition/backtest/simulator.py`):
@@ -118,7 +165,7 @@ source .venv/bin/activate
 python -m pytest -q
 ```
 
-64 tests cover: config loading and the live-trading safety guard, the
+90 tests cover: config loading and the live-trading safety guard, the
 Bybit client wrapper (sandbox mode, credential handling, retry behavior
 on network errors, mocked — no real network calls), the downloader's
 resume logic (mocked), data-quality detection (gaps/duplicates/outliers
@@ -127,7 +174,11 @@ cost model arithmetic (fees, adverse slippage both directions, regime
 widening), engine mechanics (latency fills, stop/target/both-hit/gap
 handling, risk-capped sizing, partial fills, force close, no-lookahead),
 metrics, regime labeling, walk-forward window integrity, lockbox split,
-and Monte Carlo reproducibility.
+and Monte Carlo reproducibility. The RL stack adds: action/SL-TP mapping
+and clamps, env execution honesty (next-bar fills, slippage, 1% risk cap
+enforced), reward = post-cost R-multiple, replay/network/agent mechanics,
+save/load determinism, registry versioning + rollback, and the seeded
+learning-improvement acceptance test.
 
 ## Known limitation in this environment
 
@@ -151,6 +202,6 @@ code path is identical.
 
 ## Next milestone
 
-Milestone 3 — Single Agent Prototype (momentum agent, DQN/actor-critic,
-learning loop verified against this backtester) — **on hold pending
-review and approval of Milestone 2.**
+Milestone 4 — Full Ensemble + Meta-Learner (all five agents, voting,
+regime memory, per-session performance tracking) — **on hold pending
+review and approval of Milestone 3.**
