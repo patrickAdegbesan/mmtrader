@@ -85,3 +85,46 @@ class BybitClient:
 
     def parse_timeframe_ms(self, timeframe: str) -> int:
         return self.exchange.parse_timeframe(timeframe) * 1000
+
+    # ---- order / market-data methods (Milestone 5+) -------------------
+    # Order placement is NOT retried automatically: a timed-out create
+    # might still have reached the exchange, and blind retries can double
+    # an order. Callers must reconcile via fetch_order instead.
+
+    @retry(
+        retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=1, max=30),
+        reraise=True,
+    )
+    def fetch_ticker(self, symbol: str) -> dict[str, Any]:
+        return self.exchange.fetch_ticker(symbol)
+
+    @retry(
+        retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=1, max=30),
+        reraise=True,
+    )
+    def fetch_order(self, order_id: str, symbol: str) -> dict[str, Any]:
+        return self.exchange.fetch_order(order_id, symbol)
+
+    def create_order(
+        self,
+        symbol: str,
+        order_type: str,
+        side: str,
+        amount: float,
+        price: float | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self.exchange.create_order(symbol, order_type, side, amount, price, params or {})
+
+    @retry(
+        retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=1, max=30),
+        reraise=True,
+    )
+    def cancel_order(self, order_id: str, symbol: str) -> dict[str, Any]:
+        return self.exchange.cancel_order(order_id, symbol)

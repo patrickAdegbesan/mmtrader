@@ -53,6 +53,30 @@ backtest:
     runs: 50
     noise_scale: 0.25
 
+# Guardian A — Risk Engine. Config validation REFUSES values looser than
+# the non-negotiable rules (risk>1%, halt>5%, governor>10% all rejected).
+risk:
+  risk_per_trade: 0.01
+  kelly_fraction: 0.5
+  daily_loss_halt: 0.05
+  drawdown_governor_threshold: 0.10
+  drawdown_governor_scale: 0.5
+  max_trades_per_hour: 6
+  max_trades_per_day: 30
+  max_concurrent_positions: 2
+  max_total_exposure: 1.0
+  min_stop_pct: 0.001
+  max_stop_pct: 0.02
+  min_take_profit_pct: 0.001
+  max_take_profit_pct: 0.05
+
+# Order execution: limit-first (maker), market fallback on timeout.
+execution:
+  limit_timeout_seconds: 10.0
+  poll_interval_seconds: 0.5
+  fallback_to_market: true
+  post_only: true
+
 # RL agent training (Milestone 3+). Stop/take-profit come out of the
 # model, scaled by current volatility and clamped to these bounds; the
 # Risk Engine adds its own hard clamps in Milestone 5.

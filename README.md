@@ -4,7 +4,52 @@ Self-learning, ensemble-based AI crypto scalping system for Bybit
 (BTC/USDT, ETH/USDT). Built milestone by milestone per the architecture
 document; this repo currently implements **Milestones 1–2**.
 
-## Status: Milestone 4 — Full Ensemble + Meta-Learner
+## Status: Milestone 5 — Risk Engine + Execution
+
+Implements Guardian A and the order-execution module:
+
+- **Risk Engine** (`src/cognition/risk/engine.py`): standalone gate —
+  every proposed trade passes `evaluate()` BEFORE execution, agents can
+  never override it. Enforces all non-negotiables:
+  1. ≤1% equity risk per trade, fractional-Kelly sized within the cap
+     (no-edge proposals are rejected outright);
+  2. daily circuit breaker at −5%: halts everything for the rest of the
+     UTC day (review mode), resets on day rollover;
+  3. drawdown governor: sizes shrink automatically while drawdown from
+     peak exceeds 10%;
+  4. overtrading guard: sliding max-trades-per-hour/day windows;
+  5. exposure limits: max concurrent positions, no doubling into a
+     symbol, total-notional cap (oversized orders are shrunk to fit);
+  6. model-proposed SL/TP clamped to hard bounds; proposals without a
+     stop are rejected.
+  Every decision carries an audit trail (reason + adjustments), and the
+  **config validators refuse values looser than the non-negotiables** —
+  `risk_per_trade: 0.02` in YAML fails at load time.
+- **Limit-first executor** (`src/cognition/execution/executor.py`):
+  quotes as a maker (post-only limit at the near touch), polls for the
+  fill, cancels on timeout and sends a market order only for the
+  unfilled remainder — with cancel/fill race reconciliation so a fill
+  that lands mid-cancel is never doubled. Order placement is never
+  blind-retried (a timed-out create may still have reached the exchange).
+- **Testnet-only, twice**: the executor refuses a non-testnet client
+  unless the explicit `ALLOW_LIVE_TRADING` override is set — independent
+  of the same guard at config load.
+- **Bybit order API** on the client wrapper: create/cancel/fetch order,
+  fetch ticker, with retry policies (reads retry; order placement does not).
+
+Run it:
+
+```bash
+python scripts/testnet_trade_demo.py            # dry-run: full pipeline on a mock exchange
+python scripts/testnet_trade_demo.py --testnet  # real TESTNET order (needs keys + network)
+```
+
+The demo walks a sane proposal, a reckless stop (clamped), a no-edge
+proposal (rejected), and the circuit breaker tripping + holding through
+recovery — then executes the approved trade limit-first with market
+fallback.
+
+## Milestone 4 — Full Ensemble + Meta-Learner (complete)
 
 Implements the 5-agent ensemble:
 
@@ -209,7 +254,7 @@ source .venv/bin/activate
 python -m pytest -q
 ```
 
-102 tests cover: config loading and the live-trading safety guard, the
+136 tests cover: config loading and the live-trading safety guard, the
 Bybit client wrapper (sandbox mode, credential handling, retry behavior
 on network errors, mocked — no real network calls), the downloader's
 resume logic (mocked), data-quality detection (gaps/duplicates/outliers
@@ -246,6 +291,6 @@ code path is identical.
 
 ## Next milestone
 
-Milestone 5 — Risk Engine + Execution (Guardian A fully enforced, order
-execution module with limit-first logic, Bybit TESTNET integration
-only) — **on hold pending review and approval of Milestone 4.**
+Milestone 6 — Paper Trading Mode (full live-data paper trading on Bybit
+Testnet with monitoring, alerts, and the learning loop in real time) —
+**on hold pending review and approval of Milestone 5.**

@@ -76,6 +76,45 @@ class PathsConfig(BaseModel):
     models_dir: str = "models"
 
 
+class RiskConfig(BaseModel):
+    """Guardian A limits. Validators reject any attempt to configure
+    values looser than the project's non-negotiable rules."""
+    risk_per_trade: float = 0.01
+    kelly_fraction: float = 0.5
+    daily_loss_halt: float = 0.05
+    drawdown_governor_threshold: float = 0.10
+    drawdown_governor_scale: float = 0.5
+    max_trades_per_hour: int = 6
+    max_trades_per_day: int = 30
+    max_concurrent_positions: int = 2
+    max_total_exposure: float = 1.0
+    min_stop_pct: float = 0.001
+    max_stop_pct: float = 0.02
+    min_take_profit_pct: float = 0.001
+    max_take_profit_pct: float = 0.05
+
+    @model_validator(mode="after")
+    def _enforce_non_negotiables(self) -> "RiskConfig":
+        if self.risk_per_trade > 0.01:
+            raise ValueError("risk_per_trade may not exceed 1% — non-negotiable rule 1")
+        if self.daily_loss_halt > 0.05:
+            raise ValueError("daily_loss_halt may not exceed 5% — non-negotiable rule 2")
+        if self.drawdown_governor_threshold > 0.10:
+            raise ValueError("drawdown_governor_threshold may not exceed 10% — non-negotiable rule 3")
+        if not 0 < self.drawdown_governor_scale < 1:
+            raise ValueError("drawdown_governor_scale must shrink sizes (0 < scale < 1)")
+        if not 0 < self.kelly_fraction <= 1:
+            raise ValueError("kelly_fraction must be in (0, 1]")
+        return self
+
+
+class ExecutionConfig(BaseModel):
+    limit_timeout_seconds: float = 10.0
+    poll_interval_seconds: float = 0.5
+    fallback_to_market: bool = True
+    post_only: bool = True
+
+
 class TrainingConfig(BaseModel):
     episodes: int = 60
     episode_bars: int = 720
@@ -131,6 +170,8 @@ class AppConfig(BaseModel):
     data_quality: DataQualityConfig = Field(default_factory=DataQualityConfig)
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
+    risk: RiskConfig = Field(default_factory=RiskConfig)
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
 
     def resolve_path(self, relative: str) -> Path:
