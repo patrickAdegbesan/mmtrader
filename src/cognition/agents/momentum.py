@@ -15,13 +15,19 @@ from cognition.backtest.simulator import Signal
 from cognition.learning.registry import ModelRegistry
 
 
-def load_momentum_agent(registry: ModelRegistry, version: str | None = None) -> tuple[DQNAgent, FeatureStats, dict]:
+def load_agent(registry: ModelRegistry, version: str | None = None) -> tuple[DQNAgent, FeatureStats, dict]:
+    """Load any DQN agent checkpoint (momentum, mean-reversion, ...) from
+    its registry along with the feature-normalization stats it was
+    trained with."""
     state, meta = registry.load(version)
     config = DQNConfig(**state["config"])
     agent = DQNAgent(state["observation_dim"], state["n_actions"], config)
     agent.load_state_dict(state)
     stats = FeatureStats.from_dict(meta["feature_stats"])
     return agent, stats, meta
+
+
+load_momentum_agent = load_agent  # historical name from Milestone 3
 
 
 class DQNStrategy:

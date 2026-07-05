@@ -62,6 +62,37 @@ def add_bollinger_position(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_volume_features(df: pd.DataFrame) -> pd.DataFrame:
     df["volume_delta"] = df["volume"].diff()
+    rolling = df["volume"].rolling(window=50, min_periods=25)
+    std = rolling.std()
+    df["volume_zscore"] = np.where(std > 0, (df["volume"] - rolling.mean()) / std, 0.0)
+    return df
+
+
+def add_mean_reversion_features(df: pd.DataFrame) -> pd.DataFrame:
+    df["sma21_distance"] = df["close"] / df["sma_21"] - 1.0
+    return df
+
+
+def add_breakout_features(df: pd.DataFrame) -> pd.DataFrame:
+    # Position of close within the trailing 20-bar Donchian channel; >1 or <0
+    # never happens (close is part of the window), 1.0 = at the highs.
+    hi = df["high"].rolling(20).max()
+    lo = df["low"].rolling(20).min()
+    channel = hi - lo
+    df["donchian_position"] = np.where(channel > 0, (df["close"] - lo) / channel, 0.5)
+    return df
+
+
+def add_microstructure_proxies(df: pd.DataFrame) -> pd.DataFrame:
+    """Candle-derived stand-ins for order-book features that historical
+    OHLCV cannot provide. `range_pct` proxies spread/liquidity thinness;
+    `close_in_range` proxies buy/sell imbalance. The Microstructure agent
+    trains on these until the live order-book WebSocket feed (Milestone 6)
+    populates `order_book_imbalance` and `spread_width` for real.
+    """
+    bar_range = df["high"] - df["low"]
+    df["range_pct"] = bar_range / df["close"]
+    df["close_in_range"] = np.where(bar_range > 0, (df["close"] - df["low"]) / bar_range, 0.5)
     return df
 
 
@@ -107,6 +138,9 @@ def extract_features(df: pd.DataFrame) -> pd.DataFrame:
     out = add_moving_averages(out)
     out = add_bollinger_position(out)
     out = add_volume_features(out)
+    out = add_mean_reversion_features(out)
+    out = add_breakout_features(out)
+    out = add_microstructure_proxies(out)
     out = add_microstructure_placeholders(out)
     out = add_volatility_regime(out)
     out = add_session_tag(out)

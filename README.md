@@ -4,7 +4,51 @@ Self-learning, ensemble-based AI crypto scalping system for Bybit
 (BTC/USDT, ETH/USDT). Built milestone by milestone per the architecture
 document; this repo currently implements **Milestones 1–2**.
 
-## Status: Milestone 3 — Single Agent Prototype
+## Status: Milestone 4 — Full Ensemble + Meta-Learner
+
+Implements the 5-agent ensemble:
+
+- **Four market agents** (`src/cognition/agents/specs.py`), each an
+  independent DQN seeing only its own feature lens: momentum
+  (velocity/acceleration/MACD), mean-reversion (RSI/Bollinger/SMA
+  distance), volume/breakout (volume z-score/Donchian position), and
+  microstructure. Microstructure currently trains on candle-derived
+  PROXIES (range width ~ spread, close-in-range ~ imbalance) because
+  historical OHLCV has no order-book data; real features replace them
+  when the live WebSocket feed lands (Milestone 6).
+- **Meta-learner with regime memory** (`meta.py`): watches rolling
+  per-agent performance and reweights votes — kept PER MARKET REGIME, so
+  momentum can dominate trends while mean-reversion owns ranges, learned
+  not hard-coded. Online update after every closed trade:
+  agents that agreed with winners gain, agents that backed losers lose,
+  scaled by their confidence; scores decay so recent performance rules.
+  Deliberately transparent (EWMA + softmax) so every weight is auditable.
+- **Voting** (`ensemble.py`): per bar, each agent votes direction +
+  confidence (softmax of its Q-values) + its preferred vol-adjusted
+  SL/TP. Combined score = Σ weight × confidence × direction; trades fire
+  above a threshold; SL/TP is the confidence-weighted average of the
+  agreeing agents' levels. Every decision (votes, weights, score) goes
+  to `decision_log` — the Guardian-B audit trail.
+- **Per-(regime, session) performance tracking** (`SessionPerformanceTracker`):
+  the "works in European hours, fails in Asian hours" memory.
+- **Engine close-hook**: the backtester now notifies strategies via
+  `on_trade_closed()` after every close — that's what drives the
+  meta-learner's online learning inside any backtest or (later) live run.
+
+Run it:
+
+```bash
+python scripts/train_ensemble.py                    # synthetic demo
+python scripts/train_ensemble.py --data data/processed/BTC_USDT_1m.parquet
+```
+
+Trains all four agents (versioned checkpoints per agent under
+`models/<agent>/`), assembles the ensemble, runs it through the
+cost-inclusive backtester with the meta-learner updating online, then
+prints: per-agent learning improvement, ensemble metrics, meta weights
+per regime, the (regime, session) table, and a sample audit-log entry.
+
+## Milestone 3 — Single Agent Prototype (complete)
 
 Implements the momentum agent trained end-to-end with the learning loop
 verified against the backtester:
@@ -165,7 +209,7 @@ source .venv/bin/activate
 python -m pytest -q
 ```
 
-90 tests cover: config loading and the live-trading safety guard, the
+102 tests cover: config loading and the live-trading safety guard, the
 Bybit client wrapper (sandbox mode, credential handling, retry behavior
 on network errors, mocked — no real network calls), the downloader's
 resume logic (mocked), data-quality detection (gaps/duplicates/outliers
@@ -202,6 +246,6 @@ code path is identical.
 
 ## Next milestone
 
-Milestone 4 — Full Ensemble + Meta-Learner (all five agents, voting,
-regime memory, per-session performance tracking) — **on hold pending
-review and approval of Milestone 3.**
+Milestone 5 — Risk Engine + Execution (Guardian A fully enforced, order
+execution module with limit-first logic, Bybit TESTNET integration
+only) — **on hold pending review and approval of Milestone 4.**

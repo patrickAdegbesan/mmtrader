@@ -176,6 +176,7 @@ class EventDrivenBacktester:
                     trades.append(trade)
                     pos = None
                     pending_exit_at = None
+                    self._notify_close(strategy, trade)
 
             # 3. Consult the strategy at this bar's close (trades allowed only past start_index).
             if i >= start_index:
@@ -197,9 +198,18 @@ class EventDrivenBacktester:
             equity += pnl
             trades.append(trade)
             curve[-1] = equity
+            self._notify_close(strategy, trade)
 
         equity_curve = pd.Series(curve, index=pd.to_datetime(ts, unit="ms", utc=True), name="equity")
         return BacktestResult(trades=trades, equity_curve=equity_curve, initial_equity=self.initial_equity, final_equity=equity)
+
+    @staticmethod
+    def _notify_close(strategy: Strategy, trade: Trade) -> None:
+        """Learning-loop hook: strategies (e.g. the ensemble's meta-learner)
+        may update themselves after every closed trade."""
+        hook = getattr(strategy, "on_trade_closed", None)
+        if hook is not None:
+            hook(trade)
 
     def _open_position(self, sig: Signal, i: int, bar_open: float, regime: object, equity: float) -> _Position:
         fill = self.cost.entry_price(bar_open, sig.direction, regime)
