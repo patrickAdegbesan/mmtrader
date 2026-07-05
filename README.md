@@ -4,7 +4,57 @@ Self-learning, ensemble-based AI crypto scalping system for Bybit
 (BTC/USDT, ETH/USDT). Built milestone by milestone per the architecture
 document; this repo currently implements **Milestones 1–2**.
 
-## Status: Milestone 5 — Risk Engine + Execution
+## Status: Milestone 6 — Paper Trading Mode
+
+The full production loop, driven by a bar feed:
+
+```
+closed bar -> features -> regime label -> ensemble vote
+          -> Guardian A (Risk Engine) -> paper fill (cost model)
+          -> position management (stop/target/time, conservative)
+          -> on close: journal + meta-learner + per-trade agent updates
+          -> Guardian B: alerts, dashboard, watchdog, equity log
+```
+
+- **Trade journal** (`src/cognition/learning/journal.py`): SQLite; every
+  closed trade stores entry/exit, size, direction, duration, per-agent
+  votes + confidences, the feature snapshot at entry, regime, session,
+  post-cost P&L, R-multiple, and MAE — plus an equity curve and an
+  operational event log.
+- **Feeds** (`src/cognition/data/feed.py`, `websocket_feed.py`):
+  ReplayFeed (historical data played as if live — the verification path
+  and soak-test tool), RestPollingFeed (closed candles only, works over
+  plain HTTPS), and a Bybit v5 WebSocket kline feed with exponential-
+  backoff reconnection and confirmed-candle filtering.
+- **Real-time learning**: the meta-learner reweights after every closed
+  trade, and (with `online_learning=True`, on by default in paper mode)
+  each voting agent also receives the trade-level transition
+  (entry observation, its action, post-cost R) into its replay buffer.
+- **Guardian B** (`src/cognition/monitoring/`): Telegram alerts over the
+  plain Bot API with per-kind throttling + suppressed-repeat summaries
+  (critical alerts bypass the throttle); a feed watchdog that flags a
+  stalled market feed; a self-contained HTML dashboard (equity SVG, open
+  positions, meta weights per regime, regime/session table, recent
+  trades) that auto-refreshes in the browser.
+- **Paper fills use the backtester's CostModel** (taker fee + regime-
+  aware adverse slippage) — deliberately pessimistic vs. the limit-first
+  executor, so paper results understate rather than flatter.
+
+Run it:
+
+```bash
+python scripts/paper_trade.py --replay-synthetic 3000 --fresh-agents  # works anywhere
+python scripts/paper_trade.py --replay data/processed/BTC_USDT_1m.parquet
+python scripts/paper_trade.py --live          # Bybit TESTNET via REST polling
+python scripts/paper_trade.py --live --ws     # TESTNET via WebSocket
+```
+
+Watch `reports/dashboard.html` while it runs; results land in
+`data/journal.db`. Train agents first with `scripts/train_ensemble.py`
+(the CLI loads them from `models/<agent>/`), or use `--fresh-agents`
+for plumbing checks.
+
+## Milestone 5 — Risk Engine + Execution (complete)
 
 Implements Guardian A and the order-execution module:
 
@@ -254,7 +304,7 @@ source .venv/bin/activate
 python -m pytest -q
 ```
 
-136 tests cover: config loading and the live-trading safety guard, the
+159 tests cover: config loading and the live-trading safety guard, the
 Bybit client wrapper (sandbox mode, credential handling, retry behavior
 on network errors, mocked — no real network calls), the downloader's
 resume logic (mocked), data-quality detection (gaps/duplicates/outliers
@@ -291,6 +341,9 @@ code path is identical.
 
 ## Next milestone
 
-Milestone 6 — Paper Trading Mode (full live-data paper trading on Bybit
-Testnet with monitoring, alerts, and the learning loop in real time) —
-**on hold pending review and approval of Milestone 5.**
+Milestone 7 — Live-Ready Hardening (deployment docs, Docker, runbooks,
+scheduled retraining) — **only on the product owner's explicit
+instruction.** In the meantime: run the real paper-trading campaign on a
+machine with exchange access (this sandbox cannot reach Bybit), 4–8
+weeks across varied volatility, with agents trained on real downloaded
+data that have passed the backtest gate.

@@ -8,6 +8,7 @@ numpy==1.26.4
 ta==0.11.0
 pyarrow==17.0.0
 torch>=2.4
+websockets>=12.0
 tenacity==9.0.0
 pytest==8.3.3
 pytest-mock==3.14.0

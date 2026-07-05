@@ -36,6 +36,7 @@ class AgentVote:
     confidence: float       # [0, 1]
     stop_loss_pct: float = 0.0
     take_profit_pct: float = 0.0
+    action: int = 0         # raw action id (for online RL updates)
 
 
 @dataclass

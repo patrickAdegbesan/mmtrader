@@ -47,6 +47,7 @@ class EnsembleStrategy:
         vote_threshold: float = 0.15,
         max_holding_bars: int = 120,
         keep_decision_log: bool = True,
+        online_learning: bool = False,
     ):
         self.members = members
         self.mapper = action_mapper
@@ -54,11 +55,18 @@ class EnsembleStrategy:
         self.vote_threshold = vote_threshold
         self.max_holding_bars = max_holding_bars
         self.keep_decision_log = keep_decision_log
+        # When True (paper/live trading), each closed trade also feeds a
+        # trade-level transition back into every voting agent's replay
+        # buffer: (obs at entry, action it chose, post-cost R) — the
+        # per-trade learning loop from the spec, on top of the
+        # meta-learner reweighting.
+        self.online_learning = online_learning
 
         self.session_tracker = SessionPerformanceTracker()
         self.decision_log: list[dict] = []
         self._pending_votes: dict[str, AgentVote] | None = None
         self._pending_regime: object = None
+        self._pending_obs: dict[str, np.ndarray] | None = None
         self._features: dict[str, np.ndarray] = {}
         self._valid: np.ndarray | None = None
         self._vol: np.ndarray | None = None
@@ -88,7 +96,7 @@ class EnsembleStrategy:
             if "session" in df.columns else np.full(n, None, dtype=object)
         )
 
-    def _member_vote(self, member: EnsembleMember, i: int) -> AgentVote:
+    def _member_vote(self, member: EnsembleMember, i: int) -> tuple[AgentVote, np.ndarray]:
         obs = np.concatenate([self._features[member.name][i], [0.0, 0.0, 0.0]]).astype(np.float32)
         with torch.no_grad():
             q = member.agent.online(torch.from_numpy(obs).unsqueeze(0)).squeeze(0)
@@ -98,19 +106,23 @@ class EnsembleStrategy:
         confidence = float(probs[action].item())
         direction = self.mapper.direction(action)
         if direction == 0:
-            return AgentVote(direction=0, confidence=confidence)
+            return AgentVote(direction=0, confidence=confidence, action=action), obs
         levels = self.mapper.exit_levels(action, self._vol[i])
         return AgentVote(
             direction=direction, confidence=confidence,
             stop_loss_pct=levels.stop_loss_pct, take_profit_pct=levels.take_profit_pct,
-        )
+            action=action,
+        ), obs
 
     def signal(self, i: int) -> Signal | None:
         if not self._valid[i]:
             return None
         regime = self._regime[i]
         weights = self.meta.weights(regime)
-        votes = {m.name: self._member_vote(m, i) for m in self.members}
+        votes: dict[str, AgentVote] = {}
+        observations: dict[str, np.ndarray] = {}
+        for m in self.members:
+            votes[m.name], observations[m.name] = self._member_vote(m, i)
 
         score = sum(weights[name] * v.confidence * v.direction for name, v in votes.items())
         direction = int(np.sign(score)) if abs(score) >= self.vote_threshold else 0
@@ -134,6 +146,7 @@ class EnsembleStrategy:
 
         self._pending_votes = votes
         self._pending_regime = regime
+        self._pending_obs = observations
         return Signal(
             direction=direction, stop_loss_pct=stop, take_profit_pct=tp,
             max_holding_bars=self.max_holding_bars,
@@ -149,5 +162,28 @@ class EnsembleStrategy:
                 r_multiple=trade.r_multiple,
                 regime=trade.market_regime if trade.market_regime is not None else self._pending_regime,
             )
+            if self.online_learning and self._pending_obs is not None:
+                reward = float(np.clip(trade.r_multiple, -5.0, 5.0))
+                for m in self.members:
+                    vote = self._pending_votes.get(m.name)
+                    obs = self._pending_obs.get(m.name)
+                    if vote is None or obs is None:
+                        continue
+                    # Trade-level transition: the observation the agent
+                    # voted on, the action it chose, the post-cost R the
+                    # position realized. Terminal (done) — trades are
+                    # episodic events in live learning.
+                    m.agent.observe(obs, vote.action, reward, obs, True)
             self._pending_votes = None
+            self._pending_obs = None
         self.session_tracker.update(trade.market_regime, trade.session, trade.pnl, trade.r_multiple)
+
+    def last_votes_snapshot(self) -> dict:
+        """Serializable copy of the votes behind the most recent entry
+        signal — journaled with the trade for auditability."""
+        if self._pending_votes is None:
+            return {}
+        return {
+            name: {"direction": v.direction, "confidence": round(v.confidence, 4)}
+            for name, v in self._pending_votes.items()
+        }

@@ -115,6 +115,17 @@ class ExecutionConfig(BaseModel):
     post_only: bool = True
 
 
+class PaperConfig(BaseModel):
+    warmup_bars: int = 250
+    buffer_bars: int = 600
+    dashboard_every: int = 20
+    watchdog_stale_multiple: float = 3.0
+    vote_threshold: float = 0.15
+    journal_path: str = "data/journal.db"
+    dashboard_path: str = "reports/dashboard.html"
+    alert_throttle_seconds: float = 300.0
+
+
 class TrainingConfig(BaseModel):
     episodes: int = 60
     episode_bars: int = 720
@@ -172,6 +183,7 @@ class AppConfig(BaseModel):
     training: TrainingConfig = Field(default_factory=TrainingConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
+    paper: PaperConfig = Field(default_factory=PaperConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
 
     def resolve_path(self, relative: str) -> Path:

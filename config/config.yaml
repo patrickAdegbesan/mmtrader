@@ -77,6 +77,17 @@ execution:
   fallback_to_market: true
   post_only: true
 
+# Paper trading (Milestone 6).
+paper:
+  warmup_bars: 250
+  buffer_bars: 600
+  dashboard_every: 20
+  watchdog_stale_multiple: 3.0
+  vote_threshold: 0.15
+  journal_path: data/journal.db
+  dashboard_path: reports/dashboard.html
+  alert_throttle_seconds: 300
+
 # RL agent training (Milestone 3+). Stop/take-profit come out of the
 # model, scaled by current volatility and clamped to these bounds; the
 # Risk Engine adds its own hard clamps in Milestone 5.
