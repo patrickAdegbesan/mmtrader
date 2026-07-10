@@ -1,0 +1,45 @@
+# Project Cognition — paper trading deployment.
+#
+#   docker compose up -d          # start trading + nightly retraining
+#   docker compose logs -f paper  # follow the structured log
+#   docker compose down           # stop (positions are paper-only)
+#
+# .env in this directory supplies BYBIT_API_KEY/SECRET (testnet!),
+# TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID. Never commit it.
+
+services:
+  paper:
+    build: .
+    container_name: cognition-paper
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pathlib,time,sys; p=pathlib.Path('logs/paper_trader.log'); sys.exit(0 if p.exists() and time.time()-p.stat().st_mtime < 300 else 1)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # Nightly full retraining with the promote/rollback gate. Sleeps first
+  # so a fresh deployment trades before it ever retrains.
+  retrainer:
+    build: .
+    container_name: cognition-retrainer
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep 86400
+          python scripts/retrain.py --data data/processed/BTC_USDT_1m.parquet || echo "retrain failed; will retry tomorrow"
+        done

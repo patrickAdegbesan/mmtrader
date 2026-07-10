@@ -4,7 +4,45 @@ Self-learning, ensemble-based AI crypto scalping system for Bybit
 (BTC/USDT, ETH/USDT). Built milestone by milestone per the architecture
 document; this repo currently implements **Milestones 1–2**.
 
-## Status: Milestone 6 — Paper Trading Mode
+## Status: Milestone 7 — Live-Ready Hardening (complete)
+
+Deployment and operations tooling for 24/7 unattended running:
+
+- **Scheduled retraining with a promotion gate**
+  (`src/cognition/learning/retrain.py`, `scripts/retrain.py`): each agent
+  warm-starts from its production version, retrains on fresh data, and
+  both old and new are evaluated greedily on the same held-out slice.
+  The new version is always saved (immutable, inspectable) but is
+  **activated only if it doesn't underperform production** — a refused
+  promotion means LATEST never moves. No silent model updates, ever.
+- **Docker**: CPU-torch slim image, `docker-compose.yml` with the
+  trading service (auto-restart, healthcheck on log freshness) and a
+  nightly `retrainer` service. State (journal/models/logs/reports) lives
+  in mounted volumes and survives rebuilds.
+- **systemd alternative** (`deploy/`): service unit for the trader plus
+  a retrain service + timer (02:30 UTC nightly).
+- **Runbook** (`docs/RUNBOOK.md`): VPS selection/hardening, credential
+  setup (trade-only keys, IP whitelist, Telegram), deploy steps for both
+  Docker and systemd, monitoring checklist, a failure playbook
+  (circuit breaker, stalled feed, restart loops, rollback alerts), manual
+  model rollback, backups, and the graduation criteria that gate any
+  move toward live capital.
+
+```bash
+# On a VPS:
+git clone <repo> /opt/mmtrader && cd /opt/mmtrader
+cp .env.example .env   # testnet keys + telegram
+docker compose build
+docker compose run --rm paper python scripts/download_data.py
+docker compose run --rm paper python scripts/train_ensemble.py --data data/processed/BTC_USDT_1m.parquet --episodes 200
+docker compose up -d   # trades 24/7, retrains nightly, alerts your phone
+```
+
+Still TESTNET ONLY: live mode stays double-locked behind the explicit
+`ALLOW_LIVE_TRADING` override, which remains off until the graduation
+criteria in the runbook are met and the product owner signs off.
+
+## Milestone 6 — Paper Trading Mode (complete)
 
 The full production loop, driven by a bar feed:
 
@@ -304,7 +342,7 @@ source .venv/bin/activate
 python -m pytest -q
 ```
 
-159 tests cover: config loading and the live-trading safety guard, the
+166 tests cover: config loading and the live-trading safety guard, the
 Bybit client wrapper (sandbox mode, credential handling, retry behavior
 on network errors, mocked — no real network calls), the downloader's
 resume logic (mocked), data-quality detection (gaps/duplicates/outliers
@@ -339,11 +377,12 @@ code path is identical.
 - API keys are read only from environment variables / `.env` (gitignored),
   never hard-coded, never logged.
 
-## Next milestone
+## What's next (operational, not code)
 
-Milestone 7 — Live-Ready Hardening (deployment docs, Docker, runbooks,
-scheduled retraining) — **only on the product owner's explicit
-instruction.** In the meantime: run the real paper-trading campaign on a
-machine with exchange access (this sandbox cannot reach Bybit), 4–8
-weeks across varied volatility, with agents trained on real downloaded
-data that have passed the backtest gate.
+All seven milestones are built. The remaining work runs on your VPS:
+1. download real 5-year data (`scripts/download_data.py`);
+2. train the ensemble properly on it (`scripts/train_ensemble.py`) and
+   gate it through the backtester (`scripts/run_backtest.py`);
+3. run the 4–8 week testnet paper campaign (`docker compose up -d`);
+4. only after the runbook's graduation criteria pass and the product
+   owner explicitly approves: consider a small live allocation.

@@ -1,0 +1,25 @@
+# Project Cognition — paper trading daemon (non-Docker deployment).
+# Install:
+#   sudo cp deploy/cognition-paper.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cognition-paper
+# Logs: journalctl -u cognition-paper -f
+
+[Unit]
+Description=Project Cognition paper trading (Bybit testnet)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cognition
+WorkingDirectory=/opt/mmtrader
+EnvironmentFile=/opt/mmtrader/.env
+ExecStart=/opt/mmtrader/.venv/bin/python scripts/paper_trade.py --live --symbols BTC/USDT,ETH/USDT
+Restart=always
+RestartSec=10
+# Give the loop time to write its final journal entries on stop.
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+# Nightly retraining at 02:30 UTC (quiet hours between sessions).
+# Install:
+#   sudo cp deploy/cognition-retrain.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cognition-retrain.timer
+[Unit]
+Description=Nightly Project Cognition retraining
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

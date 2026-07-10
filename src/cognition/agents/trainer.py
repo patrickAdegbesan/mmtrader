@@ -26,6 +26,9 @@ class TrainerConfig:
     eval_every: int = 10             # episodes between greedy evals
     eval_fraction: float = 0.2       # tail fraction of data held out for eval
     seed: int = 0
+    # When False, checkpoints are saved but LATEST is not moved — used by
+    # scheduled retraining, where promotion is a separate gated decision.
+    activate_checkpoints: bool = True
     dqn: DQNConfig = field(default_factory=DQNConfig)
 
 
@@ -124,6 +127,7 @@ class AgentTrainer:
                             "seed": self.config.seed,
                         },
                     },
+                    activate=self.config.activate_checkpoints,
                 )
                 log_with_fields(logger, 20, "Eval checkpoint", version=version, **result.__dict__)
 

@@ -1,0 +1,10 @@
+# One-shot retraining run, scheduled by cognition-retrain.timer.
+[Unit]
+Description=Project Cognition scheduled retraining (gated promotion)
+
+[Service]
+Type=oneshot
+User=cognition
+WorkingDirectory=/opt/mmtrader
+EnvironmentFile=/opt/mmtrader/.env
+ExecStart=/opt/mmtrader/.venv/bin/python scripts/retrain.py --data data/processed/BTC_USDT_1m.parquet
