@@ -31,13 +31,21 @@ class BybitClient:
     config.py) before this ever talks to the real exchange.
     """
 
-    def __init__(self, config: AppConfig, secrets: Secrets):
+    def __init__(self, config: AppConfig, secrets: Secrets, public_data_only: bool = False):
         self.config = config
         self.secrets = secrets
+        # Public market data (historical candles, live klines) must ALWAYS
+        # come from mainnet. Testnet candles are synthetic, thin, and often
+        # near-empty — training or paper trading on them measures fiction.
+        # Testnet only matters for order placement, so a public-data client
+        # also refuses to carry credentials and therefore cannot trade.
+        self.public_data_only = public_data_only
         self._exchange: ccxt.bybit | None = None
 
     @property
     def is_testnet(self) -> bool:
+        if self.public_data_only:
+            return False
         return self.secrets.bybit_env == "testnet"
 
     @property
@@ -48,7 +56,7 @@ class BybitClient:
                 "enableRateLimit": True,
                 "options": {"defaultType": self.config.exchange.category},
             }
-            if self.secrets.bybit_api_key:
+            if self.secrets.bybit_api_key and not self.public_data_only:
                 params["apiKey"] = self.secrets.bybit_api_key
                 params["secret"] = self.secrets.bybit_api_secret
 

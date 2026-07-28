@@ -89,17 +89,24 @@ def main() -> int:
 
     # --- feed -----------------------------------------------------------
     if args.live:
-        client = BybitClient(config, secrets)
-        if not client.is_testnet:
+        # Safety interlock stays on the ENV, not on the data client: with
+        # BYBIT_ENV=testnet no code path in this process can reach a live
+        # order endpoint.
+        if secrets.bybit_env != "testnet":
             print("Refusing: BYBIT_ENV must be testnet for paper trading.")
             return 1
+        # ...but the market data itself must be REAL. Paper trading
+        # simulates its own fills and never sends an order, so it needs
+        # mainnet prices; testnet candles would make the whole campaign
+        # fictional and its results meaningless.
+        data_client = BybitClient(config, secrets, public_data_only=True)
         if args.ws:
             from cognition.data.websocket_feed import BybitWebSocketFeed
-            feed = BybitWebSocketFeed(symbols, args.timeframe, testnet=True)
+            feed = BybitWebSocketFeed(symbols, args.timeframe, testnet=False)
             feed.start()
         else:
-            feed = RestPollingFeed(client, symbols, args.timeframe)
-        mode, realtime = "live-testnet", True
+            feed = RestPollingFeed(data_client, symbols, args.timeframe)
+        mode, realtime = "live-data-paper", True
     else:
         frames: dict[str, pd.DataFrame] = {}
         if args.replay:

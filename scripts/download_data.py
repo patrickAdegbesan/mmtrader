@@ -46,7 +46,9 @@ def main() -> int:
         symbols=config.symbols, timeframes=config.timeframes, testnet=secrets.bybit_env == "testnet",
     )
 
-    client = BybitClient(config, secrets)
+    # Historical candles are public mainnet data. Never testnet: those
+    # candles are synthetic and would poison every downstream model.
+    client = BybitClient(config, secrets, public_data_only=True)
     downloader = HistoricalDownloader(client, config)
 
     exit_code = 0

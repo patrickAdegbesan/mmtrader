@@ -33,6 +33,31 @@ def test_authenticated_client_carries_credentials():
     assert exchange.apiKey == "dummy-key"
 
 
+def test_public_data_client_uses_mainnet_even_when_env_is_testnet():
+    """Historical candles and live klines must come from mainnet: testnet
+    candles are synthetic, so training or paper trading on them measures
+    fiction. This must hold even though BYBIT_ENV=testnet."""
+    config = AppConfig()
+    secrets = Secrets(_env_file=None, bybit_env="testnet")
+    client = BybitClient(config, secrets, public_data_only=True)
+    assert client.is_testnet is False
+    assert "testnet" not in str(client.exchange.urls["api"]).lower()
+
+
+def test_public_data_client_refuses_credentials_so_it_cannot_trade():
+    config = AppConfig()
+    secrets = Secrets(_env_file=None, bybit_env="testnet", bybit_api_key="k", bybit_api_secret="s")
+    client = BybitClient(config, secrets, public_data_only=True)
+    assert not client.exchange.apiKey
+    assert not client.exchange.secret
+
+
+def test_default_client_still_honours_testnet_for_order_paths():
+    client = make_client(bybit_env="testnet")
+    assert client.is_testnet is True
+    assert "testnet" in str(client.exchange.urls["api"]).lower()
+
+
 def test_fetch_ohlcv_retries_on_network_error_then_succeeds():
     client = make_client()
     mock_exchange = MagicMock()
