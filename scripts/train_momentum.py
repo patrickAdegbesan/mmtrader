@@ -94,10 +94,41 @@ def main() -> int:
         print(f"{h.episode:>8} {h.total_reward:>10.2f} {h.num_trades:>7} {h.avg_r:>8.3f} {h.win_rate:>9.1%} {h.final_equity:>10.2f}")
 
     baseline, final = history[0], history[-1]
-    improved = final.total_reward > baseline.total_reward
-    print(f"\nBaseline (untrained) total R: {baseline.total_reward:.2f}")
-    print(f"Final (trained)      total R: {final.total_reward:.2f}")
+
+    # total_reward is a SUM over the episode, so simply trading less raises
+    # it even when every decision is just as bad. Decompose the change so
+    # volume reduction can't masquerade as skill:
+    #   volume effect  = what the baseline policy would have scored at the
+    #                    trained policy's trade count
+    #   quality effect = the remainder, i.e. genuinely better decisions
+    volume_equivalent = final.num_trades * baseline.avg_r
+    quality_effect = final.total_reward - volume_equivalent
+    volume_effect = volume_equivalent - baseline.total_reward
+    total_change = final.total_reward - baseline.total_reward
+
+    print(f"\nBaseline (untrained): {baseline.total_reward:9.2f} total R over {baseline.num_trades} trades (avg {baseline.avg_r:+.3f} R)")
+    print(f"Final (trained):      {final.total_reward:9.2f} total R over {final.num_trades} trades (avg {final.avg_r:+.3f} R)")
+    if total_change != 0:
+        print(f"  of the {total_change:+.2f} change: {volume_effect:+.2f} from trading less "
+              f"({volume_effect / total_change:.1%}), {quality_effect:+.2f} from better decisions "
+              f"({quality_effect / total_change:.1%})")
+
+    # The gate mirrors tests/test_learning_loop.py: per-trade decision
+    # quality must improve AND the agent must still be willing to trade.
+    # "Stop trading entirely" is the degenerate optimum on data with no
+    # exploitable edge — it must not be reported as a success.
+    quality_improved = final.avg_r > baseline.avg_r
+    still_trades = final.num_trades > 0
+    profitable = final.final_equity > bt.initial_equity
+    improved = quality_improved and still_trades
+
+    print(f"Per-trade quality improved: {'YES' if quality_improved else 'NO'} "
+          f"({baseline.avg_r:+.3f} -> {final.avg_r:+.3f} R)")
+    print(f"Still willing to trade:     {'YES' if still_trades else 'NO'} ({final.num_trades} trades)")
+    print(f"Profitable after costs:     {'YES' if profitable else 'NO'} (equity {final.final_equity:,.2f})")
     print(f"Learning loop improved the agent: {'YES' if improved else 'NO'}")
+    if improved and not profitable:
+        print("  NOTE: learning works, but this dataset yields no profitable edge.")
     print(f"Model versions saved: {registry.list_versions()} (LATEST -> {registry.latest_version()})")
 
     # --- Validate the trained agent through the M2 backtester -----------
