@@ -20,7 +20,7 @@ from cognition.data.bybit_client import BybitClient  # noqa: E402
 from cognition.data.downloader import HistoricalDownloader  # noqa: E402
 from cognition.data.quality import clean_ohlcv, run_quality_checks  # noqa: E402
 from cognition.features.engineering import extract_features  # noqa: E402
-from cognition.utils.logging import get_logger, log_with_fields  # noqa: E402
+from cognition.utils.logging import configure_file_logging, get_logger, log_with_fields  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,7 +40,8 @@ def main() -> int:
     if args.timeframes:
         config.timeframes = [t.strip() for t in args.timeframes.split(",")]
 
-    logger = get_logger("download_data", log_dir=config.log_dir)
+    configure_file_logging(config.log_dir, "download_data")
+    logger = get_logger("download_data")
     log_with_fields(
         logger, 20, "Milestone 1 pipeline starting",
         symbols=config.symbols, timeframes=config.timeframes, testnet=secrets.bybit_env == "testnet",

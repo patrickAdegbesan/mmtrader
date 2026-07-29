@@ -27,7 +27,7 @@ from cognition.config import get_settings  # noqa: E402
 from cognition.data.bybit_client import BybitClient  # noqa: E402
 from cognition.execution.executor import LimitFirstExecutor, OrderRequest  # noqa: E402
 from cognition.risk.engine import RiskEngine, RiskLimits, TradeProposal  # noqa: E402
-from cognition.utils.logging import get_logger, log_with_fields  # noqa: E402
+from cognition.utils.logging import configure_file_logging, get_logger, log_with_fields  # noqa: E402
 
 
 def make_mock_client() -> MagicMock:
@@ -68,7 +68,8 @@ def main() -> int:
     args = parser.parse_args()
 
     config, secrets = get_settings()
-    logger = get_logger("trade_demo", log_dir=config.log_dir)
+    configure_file_logging(config.log_dir, "trade_demo")
+    logger = get_logger("trade_demo")
 
     limits = RiskLimits(**config.risk.model_dump())
     risk_engine = RiskEngine(limits)

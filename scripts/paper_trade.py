@@ -50,6 +50,7 @@ from cognition.monitoring.alerts import TelegramAlerter  # noqa: E402
 from cognition.monitoring.dashboard import DashboardWriter  # noqa: E402
 from cognition.paper.trader import PaperTrader  # noqa: E402
 from cognition.risk.engine import RiskEngine, RiskLimits  # noqa: E402
+from cognition.utils.logging import configure_file_logging  # noqa: E402
 from cognition.utils.timeframes import timeframe_to_ms  # noqa: E402
 
 
@@ -82,6 +83,12 @@ def build_members(fresh: bool, models_dir) -> list[EnsembleMember]:
 def main() -> int:
     args = parse_args()
     config, secrets = get_settings()
+    # Filename matches the Docker healthcheck (docker-compose.yml), which
+    # watches this file's mtime as the liveness signal. Every cognition.*
+    # module active during the run (feed, risk engine, executor, alerts,
+    # paper_trader itself) now writes here, so a stalled loop of ANY kind
+    # is what trips the healthcheck, not just the paper_trader logger.
+    configure_file_logging(config.log_dir, "paper_trader")
     pc, bt, tc, rc = config.paper, config.backtest, config.training, config.risk
 
     symbols = [s.strip() for s in args.symbols.split(",")]

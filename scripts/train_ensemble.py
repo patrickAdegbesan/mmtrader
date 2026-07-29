@@ -40,7 +40,7 @@ from cognition.backtest.simulator import EventDrivenBacktester  # noqa: E402
 from cognition.backtest.synthetic import make_synthetic_ohlcv  # noqa: E402
 from cognition.features.engineering import extract_features  # noqa: E402
 from cognition.learning.registry import ModelRegistry  # noqa: E402
-from cognition.utils.logging import get_logger, log_with_fields  # noqa: E402
+from cognition.utils.logging import configure_file_logging, get_logger, log_with_fields  # noqa: E402
 from cognition.utils.timeframes import bars_per_day, bars_per_year  # noqa: E402
 
 
@@ -59,7 +59,8 @@ def main() -> int:
     args = parse_args()
     config, _ = get_settings()
     tc, bt = config.training, config.backtest
-    logger = get_logger("train_ensemble", log_dir=config.log_dir)
+    configure_file_logging(config.log_dir, "train_ensemble")
+    logger = get_logger("train_ensemble")
 
     if args.data:
         df = pd.read_parquet(args.data)

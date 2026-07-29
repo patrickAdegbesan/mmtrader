@@ -33,7 +33,7 @@ from cognition.features.engineering import extract_features  # noqa: E402
 from cognition.learning.registry import ModelRegistry  # noqa: E402
 from cognition.learning.retrain import retrain_agent  # noqa: E402
 from cognition.monitoring.alerts import TelegramAlerter  # noqa: E402
-from cognition.utils.logging import get_logger, log_with_fields  # noqa: E402
+from cognition.utils.logging import configure_file_logging, get_logger, log_with_fields  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,7 +52,8 @@ def main() -> int:
     args = parse_args()
     config, secrets = get_settings()
     tc, bt = config.training, config.backtest
-    logger = get_logger("retrain_cli", log_dir=config.log_dir)
+    configure_file_logging(config.log_dir, "retrain_cli")
+    logger = get_logger("retrain_cli")
 
     if args.data:
         df = pd.read_parquet(args.data)
