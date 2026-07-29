@@ -35,6 +35,18 @@ def add_price_dynamics(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_trailing_momentum(df: pd.DataFrame, window: int = 15) -> pd.DataFrame:
+    """N-bar trailing return. 1-bar price_velocity is dominated by bid/ask
+    bounce noise at this timeframe (Spearman rho vs forward returns ~0.01
+    on real BTC 1m data); a ~15-bar trailing return is where the real,
+    cost-clearing-magnitude signal shows up (rho ~0.045, same sign and
+    order of magnitude as RSI/Bollinger/Donchian's mean-reversion read) —
+    see the diagnostic run backing this change.
+    """
+    df[f"trailing_return_{window}"] = df["close"] / df["close"].shift(window) - 1.0
+    return df
+
+
 def add_momentum_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["rsi_14"] = RSIIndicator(close=df["close"], window=14).rsi()
     macd = MACD(close=df["close"], window_slow=26, window_fast=12, window_sign=9)
@@ -134,6 +146,7 @@ def extract_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     out = df.copy()
     out = add_price_dynamics(out)
+    out = add_trailing_momentum(out)
     out = add_momentum_indicators(out)
     out = add_moving_averages(out)
     out = add_bollinger_position(out)

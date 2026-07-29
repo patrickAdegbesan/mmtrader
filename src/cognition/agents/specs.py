@@ -18,9 +18,16 @@ class AgentSpec:
 AGENT_SPECS: dict[str, AgentSpec] = {
     "momentum": AgentSpec(
         name="momentum",
-        description="Price velocity and acceleration; thrives in trending bursts.",
+        description=(
+            "Trailing multi-bar return plus trend/oscillator reads; thrives in "
+            "trending bursts. Uses trailing_return_15 rather than 1-bar "
+            "price_velocity/acceleration — at 1m BTC resolution the 1-bar "
+            "change is dominated by bid/ask bounce noise (near-zero "
+            "correlation with forward returns) while a ~15-bar trailing "
+            "return carries real signal."
+        ),
         feature_columns=[
-            "price_velocity", "price_acceleration", "rsi_14", "macd_diff",
+            "trailing_return_15", "rsi_14", "macd_diff",
             "bollinger_position", "volume_delta", "volatility",
         ],
     ),
@@ -28,8 +35,8 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         name="mean_reversion",
         description="Oversold/overbought snapbacks; thrives in ranging markets.",
         feature_columns=[
-            "rsi_14", "bollinger_position", "sma21_distance", "price_velocity",
-            "price_acceleration", "volatility",
+            "rsi_14", "bollinger_position", "sma21_distance", "trailing_return_15",
+            "volatility",
         ],
     ),
     "volume_breakout": AgentSpec(

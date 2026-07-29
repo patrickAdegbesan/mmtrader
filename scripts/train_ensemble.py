@@ -82,6 +82,7 @@ def main() -> int:
     mapper = ActionMapper(
         vol_stop_scale=tc.vol_stop_scale, min_stop_pct=tc.min_stop_pct,
         max_stop_pct=tc.max_stop_pct, reward_risk=tc.reward_risk,
+        cost_model=cost_model, cost_margin=tc.cost_margin,
     )
 
     # --- Train each of the four market agents on its own feature lens ---

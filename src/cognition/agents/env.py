@@ -192,7 +192,7 @@ class ScalpingEnv:
 
     def _open_position(self, action: int, i: int) -> None:
         direction = self.mapper.direction(action)
-        levels = self.mapper.exit_levels(action, self._vol[self.i])
+        levels = self.mapper.exit_levels(action, self._vol[self.i], self._regime[self.i])
         fill = self.cost.entry_price(self._open[i], direction, self._regime[i])
         stop_distance = fill * levels.stop_loss_pct
         size = (self.equity * self.risk_per_trade / stop_distance) * self.cost.fill_ratio

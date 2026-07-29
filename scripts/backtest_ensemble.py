@@ -107,9 +107,15 @@ def main() -> int:
 
     # --- Load the already-trained agents (read-only) ------------------
     members = load_ensemble_members(config)
+    cost_model = CostModel(
+        taker_fee=bt.taker_fee, slippage_base=bt.slippage_base,
+        slippage_high_vol=bt.slippage_high_vol, latency_bars=bt.latency_bars,
+        fill_ratio=bt.fill_ratio,
+    )
     mapper = ActionMapper(
         vol_stop_scale=tc.vol_stop_scale, min_stop_pct=tc.min_stop_pct,
         max_stop_pct=tc.max_stop_pct, reward_risk=tc.reward_risk,
+        cost_model=cost_model, cost_margin=tc.cost_margin,
     )
 
     def strategy_factory() -> EnsembleStrategy:
@@ -123,11 +129,6 @@ def main() -> int:
             members, mapper, meta=meta, vote_threshold=args.vote_threshold, online_learning=False,
         )
 
-    cost_model = CostModel(
-        taker_fee=bt.taker_fee, slippage_base=bt.slippage_base,
-        slippage_high_vol=bt.slippage_high_vol, latency_bars=bt.latency_bars,
-        fill_ratio=bt.fill_ratio,
-    )
     engine = EventDrivenBacktester(
         cost_model, initial_equity=bt.initial_equity,
         risk_per_trade=bt.risk_per_trade, max_position_fraction=bt.max_position_fraction,

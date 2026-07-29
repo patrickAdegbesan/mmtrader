@@ -70,6 +70,7 @@ class EnsembleStrategy:
         self._features: dict[str, np.ndarray] = {}
         self._valid: np.ndarray | None = None
         self._vol: np.ndarray | None = None
+        self._vol_regime: np.ndarray | None = None
         self._regime: np.ndarray | None = None
         self._session: np.ndarray | None = None
 
@@ -87,6 +88,10 @@ class EnsembleStrategy:
             valid &= np.isfinite(feats).all(axis=1)
         self._valid = valid
         self._vol = df["volatility"].to_numpy(dtype=float)
+        self._vol_regime = (
+            df["volatility_regime"].to_numpy(dtype=object)
+            if "volatility_regime" in df.columns else np.full(n, None, dtype=object)
+        )
         self._regime = (
             df["market_regime"].to_numpy(dtype=object)
             if "market_regime" in df.columns else np.full(n, "unknown", dtype=object)
@@ -107,7 +112,7 @@ class EnsembleStrategy:
         direction = self.mapper.direction(action)
         if direction == 0:
             return AgentVote(direction=0, confidence=confidence, action=action), obs
-        levels = self.mapper.exit_levels(action, self._vol[i])
+        levels = self.mapper.exit_levels(action, self._vol[i], self._vol_regime[i])
         return AgentVote(
             direction=direction, confidence=confidence,
             stop_loss_pct=levels.stop_loss_pct, take_profit_pct=levels.take_profit_pct,

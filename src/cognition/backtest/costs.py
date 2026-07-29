@@ -49,3 +49,7 @@ class CostModel:
 
     def fee(self, notional: float) -> float:
         return abs(notional) * self.taker_fee
+
+    def round_trip_cost(self, volatility_regime: object) -> float:
+        """Fees + slippage on both legs of a trade, as a fraction of price."""
+        return 2 * self.taker_fee + 2 * self.slippage_rate(volatility_regime)

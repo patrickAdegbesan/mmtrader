@@ -101,6 +101,7 @@ training:
   min_stop_pct: 0.002
   max_stop_pct: 0.02
   reward_risk: 1.5
+  cost_margin: 1.5
 
 paths:
   raw_dir: data/raw

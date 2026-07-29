@@ -129,9 +129,15 @@ def main() -> int:
         mode, realtime = "replay", False
 
     # --- ensemble per symbol ---------------------------------------------
+    cost_model = CostModel(
+        taker_fee=bt.taker_fee, slippage_base=bt.slippage_base,
+        slippage_high_vol=bt.slippage_high_vol, latency_bars=bt.latency_bars,
+        fill_ratio=bt.fill_ratio,
+    )
     mapper = ActionMapper(
         vol_stop_scale=tc.vol_stop_scale, min_stop_pct=tc.min_stop_pct,
         max_stop_pct=tc.max_stop_pct, reward_risk=tc.reward_risk,
+        cost_model=cost_model, cost_margin=tc.cost_margin,
     )
     strategies = {}
     for symbol in symbols:
@@ -157,11 +163,7 @@ def main() -> int:
 
     trader = PaperTrader(
         symbols=symbols, strategies=strategies, risk_engine=risk_engine,
-        cost_model=CostModel(
-            taker_fee=bt.taker_fee, slippage_base=bt.slippage_base,
-            slippage_high_vol=bt.slippage_high_vol, latency_bars=bt.latency_bars,
-            fill_ratio=bt.fill_ratio,
-        ),
+        cost_model=cost_model,
         journal=journal, alerter=alerter, dashboard=dashboard,
         initial_equity=bt.initial_equity, warmup_bars=pc.warmup_bars,
         buffer_bars=pc.buffer_bars, dashboard_every=pc.dashboard_every,

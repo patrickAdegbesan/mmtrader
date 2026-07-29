@@ -145,6 +145,11 @@ class TrainingConfig(BaseModel):
     min_stop_pct: float = 0.002
     max_stop_pct: float = 0.02
     reward_risk: float = 1.5
+    # Actual floor used is max(min_stop_pct, cost_margin x round-trip cost /
+    # reward_risk) — see ActionMapper. Keeps a stop from ever being tighter
+    # than what it costs to trade it, regardless of how low realized
+    # volatility gets.
+    cost_margin: float = 1.5
 
 
 class WalkForwardConfig(BaseModel):

@@ -53,6 +53,7 @@ class DQNStrategy:
         self.max_holding_bars = max_holding_bars
         self._features: np.ndarray | None = None
         self._vol: np.ndarray | None = None
+        self._vol_regime: np.ndarray | None = None
         self._valid: np.ndarray | None = None
 
     def fit(self, train_df: pd.DataFrame) -> None:
@@ -61,6 +62,10 @@ class DQNStrategy:
     def prepare(self, df: pd.DataFrame) -> None:
         self._features = self.stats.transform(df[self.feature_columns].to_numpy(dtype=float))
         self._vol = df["volatility"].to_numpy(dtype=float)
+        self._vol_regime = (
+            df["volatility_regime"].to_numpy(dtype=object)
+            if "volatility_regime" in df.columns else np.full(len(df), None, dtype=object)
+        )
         self._valid = np.isfinite(self._features).all(axis=1)
 
     def signal(self, i: int) -> Signal | None:
@@ -73,7 +78,7 @@ class DQNStrategy:
         if action == FLAT:
             return None
         direction = self.mapper.direction(action)
-        levels = self.mapper.exit_levels(action, self._vol[i])
+        levels = self.mapper.exit_levels(action, self._vol[i], self._vol_regime[i])
         return Signal(
             direction=direction,
             stop_loss_pct=levels.stop_loss_pct,

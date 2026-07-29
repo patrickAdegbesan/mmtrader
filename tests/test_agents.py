@@ -40,15 +40,41 @@ def test_action_mapper_directions():
 
 
 def test_exit_levels_scale_with_volatility_and_are_clamped():
-    m = ActionMapper(vol_stop_scale=3.0, min_stop_pct=0.002, max_stop_pct=0.02, reward_risk=1.5)
-    tight = m.exit_levels(LONG_TIGHT, volatility=0.002)   # 3 * 0.002 = 0.006
+    # Zero-cost model isolates this to the vol_stop_scale/min/max clamp
+    # math; the cost-floor behavior itself is covered separately below.
+    zero_cost = CostModel(taker_fee=0.0, slippage_base=0.0, slippage_high_vol=0.0)
+    m = ActionMapper(
+        vol_stop_scale=3.0, min_stop_pct=0.002, max_stop_pct=0.02, reward_risk=1.5,
+        cost_model=zero_cost,
+    )
+    tight = m.exit_levels(LONG_TIGHT, volatility=0.002, volatility_regime="low")   # 3 * 0.002 = 0.006
     assert tight.stop_loss_pct == pytest.approx(0.006)
     assert tight.take_profit_pct == pytest.approx(0.009)
-    wide = m.exit_levels(LONG_WIDE, volatility=0.002)     # 2.5x tight, clamped to max
+    wide = m.exit_levels(LONG_WIDE, volatility=0.002, volatility_regime="low")     # 2.5x tight, clamped to max
     assert wide.stop_loss_pct == pytest.approx(0.015)
-    assert m.exit_levels(LONG_TIGHT, volatility=1.0).stop_loss_pct == 0.02   # clamp high
-    assert m.exit_levels(LONG_TIGHT, volatility=1e-9).stop_loss_pct == 0.002  # clamp low
-    assert m.exit_levels(LONG_TIGHT, volatility=float("nan")).stop_loss_pct >= 0.002
+    assert m.exit_levels(LONG_TIGHT, volatility=1.0, volatility_regime="low").stop_loss_pct == 0.02   # clamp high
+    assert m.exit_levels(LONG_TIGHT, volatility=1e-9, volatility_regime="low").stop_loss_pct == 0.002  # clamp low
+    assert m.exit_levels(LONG_TIGHT, volatility=float("nan"), volatility_regime="low").stop_loss_pct >= 0.002
+
+
+def test_exit_levels_stop_floor_clears_round_trip_cost():
+    # A stop this tight would let a trade that closes exactly at
+    # take-profit still net negative after fees + slippage — the
+    # cost-derived floor must prevent that in every regime.
+    cost = CostModel(taker_fee=0.001, slippage_base=0.001, slippage_high_vol=0.005)
+    m = ActionMapper(
+        vol_stop_scale=3.0, min_stop_pct=0.0005, max_stop_pct=0.02, reward_risk=1.5,
+        cost_model=cost, cost_margin=1.5,
+    )
+    for regime in ("low", "medium", "high"):
+        levels = m.exit_levels(LONG_TIGHT, volatility=1e-9, volatility_regime=regime)
+        assert levels.take_profit_pct >= cost.round_trip_cost(regime) * 1.5 - 1e-12
+
+    # Missing regime falls back to the worst-case (high-vol) cost, not the
+    # cheapest — it must not silently under-price the stop.
+    default_levels = m.exit_levels(LONG_TIGHT, volatility=1e-9)
+    high_levels = m.exit_levels(LONG_TIGHT, volatility=1e-9, volatility_regime="high")
+    assert default_levels.stop_loss_pct == pytest.approx(high_levels.stop_loss_pct)
 
 
 # ---------- feature stats ----------
