@@ -40,40 +40,29 @@ class HistoricalDownloader:
             return None
         return pd.read_parquet(path)
 
-    def download(self, symbol: str, timeframe: str, years: int | None = None) -> pd.DataFrame:
-        years = years or self.config.history.years
-        timeframe_ms = self.client.parse_timeframe_ms(timeframe)
-        now_ms = self.client.milliseconds()
-
-        existing = self._load_existing(symbol, timeframe)
-        if existing is not None and len(existing) > 0:
-            since_ms = int(existing["timestamp"].max()) + timeframe_ms
-            log_with_fields(
-                logger, 20, "Resuming download",
-                symbol=symbol, timeframe=timeframe, resume_from=since_ms, existing_candles=len(existing),
-            )
-        else:
-            since_ms = now_ms - years * 365 * 24 * 60 * 60 * 1000
-            log_with_fields(
-                logger, 20, "Starting fresh download",
-                symbol=symbol, timeframe=timeframe, since=since_ms, years=years,
-            )
-
-        if since_ms >= now_ms:
-            log_with_fields(logger, 20, "Already up to date", symbol=symbol, timeframe=timeframe)
-            return existing if existing is not None else pd.DataFrame(columns=OHLCV_COLUMNS)
-
-        new_rows: list[list[float]] = []
-        cursor = since_ms
+    def _fetch_range(
+        self,
+        symbol: str,
+        timeframe: str,
+        start_ms: int,
+        end_ms: int,
+        timeframe_ms: int,
+        segment: str,
+    ) -> list[list[float]]:
+        """Page through candles in [start_ms, end_ms). Batches may overrun
+        end_ms; the caller dedupes, so overlap is harmless.
+        """
+        rows: list[list[float]] = []
+        cursor = start_ms
         limit = self.config.history.fetch_limit
         pause = self.config.history.request_pause_seconds
 
-        while cursor < now_ms:
+        while cursor < end_ms:
             batch = self.client.fetch_ohlcv(symbol, timeframe, since=cursor, limit=limit)
             if not batch:
                 break
 
-            new_rows.extend(batch)
+            rows.extend(batch)
             last_ts = int(batch[-1][0])
 
             if last_ts < cursor:
@@ -84,12 +73,62 @@ class HistoricalDownloader:
                 break
             cursor = next_cursor
 
-            if len(new_rows) % (limit * 10) == 0:
+            if len(rows) % (limit * 10) == 0:
                 log_with_fields(
                     logger, 20, "Download progress",
-                    symbol=symbol, timeframe=timeframe, candles_fetched=len(new_rows),
+                    symbol=symbol, timeframe=timeframe, segment=segment, candles_fetched=len(rows),
                 )
             time.sleep(pause)
+        return rows
+
+    def download(self, symbol: str, timeframe: str, years: int | None = None) -> pd.DataFrame:
+        years = years or self.config.history.years
+        timeframe_ms = self.client.parse_timeframe_ms(timeframe)
+        now_ms = self.client.milliseconds()
+        requested_since = now_ms - years * 365 * 24 * 60 * 60 * 1000
+
+        existing = self._load_existing(symbol, timeframe)
+        new_rows: list[list[float]] = []
+
+        if existing is not None and len(existing) > 0:
+            existing_min = int(existing["timestamp"].min())
+            existing_max = int(existing["timestamp"].max())
+
+            # Widening the window backwards must actually fetch the earlier
+            # candles. Resuming forward-only would return a shorter history
+            # than asked for and still log success — so asking for 5 years
+            # on top of a 1-year file would silently leave you with 1.
+            if requested_since < existing_min - timeframe_ms:
+                log_with_fields(
+                    logger, 20, "Backfilling earlier history",
+                    symbol=symbol, timeframe=timeframe, years=years,
+                    requested_since=requested_since, existing_earliest=existing_min,
+                )
+                new_rows.extend(self._fetch_range(
+                    symbol, timeframe, requested_since, existing_min, timeframe_ms, "backfill",
+                ))
+
+            forward_since = existing_max + timeframe_ms
+            if forward_since < now_ms:
+                log_with_fields(
+                    logger, 20, "Resuming download",
+                    symbol=symbol, timeframe=timeframe,
+                    resume_from=forward_since, existing_candles=len(existing),
+                )
+                new_rows.extend(self._fetch_range(
+                    symbol, timeframe, forward_since, now_ms, timeframe_ms, "forward",
+                ))
+            elif not new_rows:
+                log_with_fields(logger, 20, "Already up to date", symbol=symbol, timeframe=timeframe)
+                return existing
+        else:
+            log_with_fields(
+                logger, 20, "Starting fresh download",
+                symbol=symbol, timeframe=timeframe, since=requested_since, years=years,
+            )
+            new_rows.extend(self._fetch_range(
+                symbol, timeframe, requested_since, now_ms, timeframe_ms, "initial",
+            ))
 
         new_df = pd.DataFrame(new_rows, columns=OHLCV_COLUMNS)
         combined = pd.concat([existing, new_df], ignore_index=True) if existing is not None else new_df
