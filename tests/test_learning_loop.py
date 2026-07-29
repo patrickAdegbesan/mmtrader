@@ -81,7 +81,12 @@ def test_checkpoints_are_versioned_in_registry(training_run):
     _, registry, history = training_run
     n_evals = len(history) - 1  # baseline isn't checkpointed
     assert len(registry.list_versions()) == n_evals
-    assert registry.latest_version() == registry.list_versions()[-1]
+    # LATEST tracks the best-by-terminal-equity checkpoint seen during
+    # training, not simply the chronologically last one — DQN training is
+    # non-monotonic, so the last episode is not guaranteed to be the best.
+    evals = history[1:]
+    best_idx = max(range(len(evals)), key=lambda i: evals[i].final_equity)
+    assert registry.latest_version() == registry.list_versions()[best_idx]
     _, meta = registry.load()
     assert "eval" in meta and "feature_stats" in meta
 

@@ -101,6 +101,14 @@ class AgentTrainer:
         self.history.append(baseline)
         log_with_fields(logger, 20, "Baseline eval (untrained)", **baseline.__dict__)
 
+        # DQN training is non-monotonic and can end worse than it started —
+        # including blowing up an eval slice's equity outright well past an
+        # earlier, healthy checkpoint. Every checkpoint is still saved
+        # (immutable history), but only the best-by-terminal-equity one
+        # seen so far is promoted to LATEST, so a bad final episode can't
+        # silently become the production model.
+        best_equity = float("-inf")
+
         for episode in range(1, self.config.episodes + 1):
             start, end = self._random_episode_window()
             obs = self.train_env.reset(start=start, end=end)
@@ -115,6 +123,7 @@ class AgentTrainer:
                 result = evaluate(self.eval_env, self.agent)
                 result.episode = episode
                 self.history.append(result)
+                is_best = result.final_equity > best_equity
                 version = self.registry.save(
                     self.agent.state_dict(),
                     metadata={
@@ -127,8 +136,12 @@ class AgentTrainer:
                             "seed": self.config.seed,
                         },
                     },
-                    activate=self.config.activate_checkpoints,
+                    activate=False,
                 )
-                log_with_fields(logger, 20, "Eval checkpoint", version=version, **result.__dict__)
+                if is_best:
+                    best_equity = result.final_equity
+                    if self.config.activate_checkpoints:
+                        self.registry.activate(version)
+                log_with_fields(logger, 20, "Eval checkpoint", version=version, promoted=is_best, **result.__dict__)
 
         return self.history
