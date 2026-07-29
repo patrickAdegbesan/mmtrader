@@ -16,13 +16,21 @@ class DQNConfig:
     hidden: int = 64
     lr: float = 1e-3
     gamma: float = 0.99
-    buffer_capacity: int = 50_000
+    buffer_capacity: int = 100_000
     batch_size: int = 64
     warmup_steps: int = 500
     target_sync_every: int = 500
     epsilon_start: float = 1.0
     epsilon_end: float = 0.05
-    epsilon_decay_steps: int = 10_000
+    # The profitable states in this problem are a thin, noisy tail (see the
+    # feature/label diagnostic: ~0.6% quintile spread against a ~0.4-1.2%
+    # cost floor) — at the old 10k decay, epsilon hit its floor ~7% into a
+    # 200-episode run and the agent spent the remaining 93% almost pure
+    # greedy on whatever ranking it had locked in early, which converged to
+    # "mostly don't trade" rather than to exploiting the weak edge. Slower
+    # decay buys more steps sampling the rare good states before the policy
+    # calcifies.
+    epsilon_decay_steps: int = 100_000
     grad_clip: float = 5.0
     seed: int = 0
 
