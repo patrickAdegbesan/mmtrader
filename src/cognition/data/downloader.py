@@ -60,7 +60,25 @@ class HistoricalDownloader:
         while cursor < end_ms:
             batch = self.client.fetch_ohlcv(symbol, timeframe, since=cursor, limit=limit)
             if not batch:
-                break
+                # An empty page does NOT mean "caught up to end_ms" — it can
+                # also mean a gap in the exchange's OWN history at this
+                # point. Confirmed on real Bybit data: BTC/USDT 5m klines
+                # have zero candles for ~4 days around 2022-04-11 while the
+                # 1m series for the same window is complete. Treating this
+                # as "done" silently truncated years of later history
+                # behind the gap. Skip one page-width and keep going; the
+                # loop bound (cursor < end_ms) still guarantees termination.
+                next_cursor = cursor + limit * timeframe_ms
+                if next_cursor <= cursor:
+                    break
+                log_with_fields(
+                    logger, 30, "Empty page, possible exchange-side gap — skipping ahead",
+                    symbol=symbol, timeframe=timeframe, segment=segment,
+                    cursor=cursor, skip_to=next_cursor,
+                )
+                cursor = next_cursor
+                time.sleep(pause)
+                continue
 
             rows.extend(batch)
             last_ts = int(batch[-1][0])
