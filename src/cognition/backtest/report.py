@@ -89,12 +89,12 @@ def check_pass_criteria(overall: dict, regime_df: pd.DataFrame) -> list[tuple[st
     return checks
 
 
-def pass_criteria_section(checks: list[tuple[str, str, bool]]) -> str:
+def pass_criteria_section(checks: list[tuple[str, str, bool]], note: str = PASS_CRITERIA_NOTE) -> str:
     rows = [[name, value, "PASS" if ok else "FAIL"] for name, value, ok in checks]
     return (
         "## Gate-to-live pass criteria\n\n"
         + _md_table(["criterion", "value", "status"], rows)
-        + f"\n\n_{PASS_CRITERIA_NOTE}_"
+        + f"\n\n_{note}_"
     )
 
 
