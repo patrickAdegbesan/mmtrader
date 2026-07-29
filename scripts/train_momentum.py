@@ -117,14 +117,19 @@ def main() -> int:
     # quality must improve AND the agent must still be willing to trade.
     # "Stop trading entirely" is the degenerate optimum on data with no
     # exploitable edge — it must not be reported as a success.
+    # A handful of trades says nothing about mean quality — avg_r over 3
+    # trades is noise, and a policy that nearly stopped trading could clear
+    # a floor of 1 on luck alone. Require a sample worth averaging.
+    MIN_EVAL_TRADES = 20
     quality_improved = final.avg_r > baseline.avg_r
-    still_trades = final.num_trades > 0
+    still_trades = final.num_trades >= MIN_EVAL_TRADES
     profitable = final.final_equity > bt.initial_equity
     improved = quality_improved and still_trades
 
     print(f"Per-trade quality improved: {'YES' if quality_improved else 'NO'} "
           f"({baseline.avg_r:+.3f} -> {final.avg_r:+.3f} R)")
-    print(f"Still willing to trade:     {'YES' if still_trades else 'NO'} ({final.num_trades} trades)")
+    print(f"Still willing to trade:     {'YES' if still_trades else 'NO'} "
+          f"({final.num_trades} trades, need >= {MIN_EVAL_TRADES})")
     print(f"Profitable after costs:     {'YES' if profitable else 'NO'} (equity {final.final_equity:,.2f})")
     print(f"Learning loop improved the agent: {'YES' if improved else 'NO'}")
     if improved and not profitable:

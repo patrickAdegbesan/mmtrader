@@ -126,6 +126,15 @@ class BybitClient:
         price: float | None = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        # Refusing credentials already makes trading impossible, but that is
+        # passive — fail loudly and locally if anything ever routes an order
+        # through a public-data client.
+        if self.public_data_only:
+            raise RuntimeError(
+                "This client was built for public market data only "
+                "(public_data_only=True) and holds no credentials. "
+                "It must never place orders."
+            )
         return self.exchange.create_order(symbol, order_type, side, amount, price, params or {})
 
     @retry(

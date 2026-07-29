@@ -66,6 +66,13 @@ class DataQualityConfig(BaseModel):
     max_gap_multiple: float = 2.0
     outlier_zscore: float = 6.0
     outlier_lookback: int = 200
+    # Fractions, not absolute counts: real market data always contains some
+    # volatility spikes, so demanding zero outliers makes is_clean
+    # permanently false and therefore useless as a go/no-go signal.
+    max_outlier_fraction: float = 0.005
+    # Above this share of no-trade candles the feed isn't a real market —
+    # the signature of testnet data or a dead symbol.
+    max_zero_volume_fraction: float = 0.01
 
 
 class PathsConfig(BaseModel):
