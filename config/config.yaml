@@ -93,8 +93,18 @@ paper:
 # Risk Engine adds its own hard clamps in Milestone 5.
 training:
   episodes: 60
-  episode_bars: 720
-  eval_every: 10
+  # Bars per training episode. Sized for REAL history, not the synthetic
+  # demos: at 720 (a 12-hour window) a 200-episode run over 5 years of 1m
+  # candles touches under 7% of the training split and still finishes in
+  # minutes looking successful. Measured on CPU: ~326 train steps/s, so
+  # 300 episodes x 4000 bars = 1.2M steps ~= 57% of a 5-year 1m split,
+  # about an hour per agent. Synthetic smoke tests should pass a small
+  # --episodes rather than shrinking this back down.
+  episode_bars: 4000
+  # Each greedy eval replays the whole held-out slice (~525k bars on a
+  # 5-year 1m set, ~2 min). At eval_every=10 evaluation would cost more
+  # wall-clock than training itself.
+  eval_every: 50
   eval_fraction: 0.2
   seed: 0
   vol_stop_scale: 3.0
