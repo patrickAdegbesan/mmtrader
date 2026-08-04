@@ -37,6 +37,16 @@ Consequences worth internalising:
 - Adding indicators, layers, or episodes will not change the result.
   The next idea has to change the *premise*, not the model.
 
+**Challenged and re-tested, conclusion held.** The cost model charged taker
+on every fill while `execution/executor.py` quotes maker-first, so the floor
+above priced a strategy the system does not run — a real bug, now fixed
+(`CostModel` takes a liquidity role). Correcting it moved the floor ~8x, from
+0.31% to 0.04%, and the signal still does not reach it: over 64,800 real 1m
+bars, best excess over a shuffled-return null is 0.0038%/0.0052%/0.0154% at
+5/15/60m, clearing 0/15 at every horizon. The finding is now *better*
+supported, because it holds against the cheapest floor rather than the
+dearest. Detail in [`research/FINDINGS.md`](../research/FINDINGS.md).
+
 The open candidate is **funding-rate / basis carry** — a delta-neutral
 long-spot / short-perp position collecting the structural funding
 premium. It sidesteps price prediction entirely. It has not been
