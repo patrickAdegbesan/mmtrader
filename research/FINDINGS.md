@@ -2,11 +2,22 @@
 
 Status: **smoke test only. Not a backtest. No capital should move on this.**
 
+Prerequisite reading: [`docs/STATUS.md`](../docs/STATUS.md). This file is the
+opening of the analysis pass that STATUS calls for under "What to do next" —
+funding-rate carry, analysis only, no strategy code. STATUS's instruction
+holds: *do not build a strategy before that number exists.* The number does
+not exist yet. What follows is a first probe, not the number.
+
 ## The question
 
 Long BTC spot + short BTCUSDT perp under Portfolio Margin, collecting funding.
 Earlier working assumption was a ~3–5%/yr net carry premium. Does the premium
 actually exist?
+
+This is the successor question to the one STATUS already answered negatively:
+technical indicators on BTC candles carry ~0.6% quintile spread against a
+0.4–1.2% round-trip cost floor, so there is no edge there. Carry sidesteps
+price prediction entirely, which is why it is the open candidate.
 
 ## Account setup (verified, done)
 
@@ -77,17 +88,29 @@ Three real limitations, in rough order of severity:
 
 ## What a real backtest needs
 
+STATUS scopes this as: pull funding history, subtract fees on both legs, the
+spot/perp basis, and rebalancing costs, then check net carry across 2021–2026
+*including negative-funding stretches and the Nov 2022 period*. Concretely:
+
 - [ ] **Actual funding-rate history**, not the VWAP proxy. Available from
       `GET /v5/market/funding/history` on api.bybit.com. That host is
       geo-blocked from this container but reachable from Nigeria — must be
-      pulled locally.
+      pulled locally. Note STATUS's warning that reachability varies by
+      environment and `curl` succeeding does not prove the Python client can
+      reach it; verify from the machine that will do the work.
 - [ ] Full date range rather than sampled days (spot∩perp = 2022-11 → present).
 - [ ] Explicit fee model separating maker and taker on each leg.
 - [ ] Slippage / fill model for the two-leg entry, including leg-in risk.
-- [ ] Margin and liquidation simulation under Portfolio Margin offsets.
+- [ ] Margin and liquidation simulation under Portfolio Margin offsets. STATUS
+      flags that the risk engine has no leverage/liquidation modelling today,
+      so this is new work rather than configuration.
 
 Only after that does a minimum-capital number mean anything. Any figure quoted
 before then — including the "$2,000" floated earlier in discussion — is a guess.
+
+The $126 minimum-hedge figure above is different in kind: it is a mechanical
+floor from lot size and spot's un-leverageable nature, and holds regardless of
+whether the carry turns out to be positive.
 
 ## Environment note
 

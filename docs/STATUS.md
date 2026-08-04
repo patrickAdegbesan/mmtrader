@@ -81,9 +81,31 @@ proof that Python can reach it — check with the actual client. Sandboxes
 may allow testnet but not mainnet, or foreground but not background
 tasks. Only a test from the machine that will do the work counts.
 
+## Funding-carry analysis: started, not finished
+
+A first probe exists — see [`research/FINDINGS.md`](../research/FINDINGS.md)
+and `research/basis_probe.py`. Headline: across 8 sampled days 2023–2026 the
+spot/perp basis averaged **−1.69bp** (only 3/8 days positive), i.e. the wrong
+sign for long-spot/short-perp, at a magnitude an order below the ~31bp
+round-trip fee.
+
+Treat that as discouraging, not decided. It measures a trade-VWAP proxy rather
+than realised funding, on 8 days out of ~1400. The analysis STATUS asks for is
+still open.
+
+Two things it did settle:
+
+- `public.bybit.com` (tick archive, 2020→present for perp, 2022-11→present for
+  spot) is **not** geo-blocked even where `api.bybit.com` and Binance are.
+  That is the way in for historical work from a restricted environment.
+- Minimum lot is 0.001 BTC, confirmed from tick data. Since the spot leg
+  cannot be leveraged, the smallest constructible hedge is ~2× that notional
+  (~$126 at $62.9k BTC).
+
 ## What to do next
 
-1. Analyse funding-rate carry (analysis only, no strategy code), **or**
+1. Finish the funding-carry analysis — real funding history, full date range,
+   fees and rebalancing (analysis only, no strategy code), **or**
 2. Stop. The codebase is correct and the original question has a clean,
    well-evidenced answer. That is a legitimate place to end.
 
