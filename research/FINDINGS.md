@@ -189,3 +189,74 @@ Three reasons not to get excited yet:
 
 Until then STATUS's "no edge" should be read as **"no edge at taker cost"**,
 which is a narrower claim than it currently appears to make.
+
+---
+
+# Result — the maker floor does not rescue the signal
+
+Ran the corrected diagnostic on 64,800 real Bybit 1m bars (2026-06-15 →
+2026-07-29, tick archive aggregated by `research/fetch_bars.py`).
+
+**The answer is no.** The cost model was genuinely wrong, fixing it changed
+the floor by ~8x, and the signal still does not clear it.
+
+## At scalping horizons
+
+| horizon | best excess over null | maker floor | clears? |
+|---|---|---|---|
+| 5m | 0.0038% | 0.04% | 0/15 |
+| 15m | 0.0052% | 0.04% | 0/15 |
+| 60m | 0.0154% | 0.04% | 0/15 |
+
+The best feature's excess is **~8x below** even the cheapest floor. For
+scale, the same measurement on a synthetic random walk gave a best excess of
+0.0340% — **real BTC showed less apparent signal than noise did.**
+
+## At longer horizons, and why it is not a reprieve
+
+| horizon | best excess | median null | clears maker |
+|---|---|---|---|
+| 240m | 0.0422% (volatility) | 0.0739% | 1/15 |
+| 720m | 0.0649% (volatility) | 0.0861% | 2/15 |
+
+This looks like something appears at 4–12h. It does not:
+
+1. **The winner sits below the noise floor.** At 720m the best excess
+   (0.0649%) is smaller than the *median* null spread (0.0861%). A feature
+   that beats the cost floor but loses to shuffled data is not a signal.
+2. **The effective sample is ~90 windows.** 45 days at a 720m horizon gives
+   90 non-overlapping periods, and the overlapping windows the diagnostic
+   actually uses are heavily autocorrelated. Nothing here is significant.
+3. **`volatility` is not a directional signal.** Sorting bars by volatility
+   and finding a forward-return spread at 12h reflects vol clustering and
+   drift, not a tradeable direction.
+
+## On STATUS's 0.6%
+
+Not reproduced, and no claim that it was wrong — the method here differs in
+two ways that both cut the number down: raw price levels are excluded, and
+spreads are reported net of a shuffled-return null. Under this measurement
+the numbers are 0.003%–0.15% depending on horizon, not 0.6%.
+
+The direction of the conclusion is unaffected. If anything the case is
+stronger, because it now holds against the *cheapest* floor rather than the
+most expensive one.
+
+## What this does and does not settle
+
+Settled: **"no edge" is not an artifact of the taker cost assumption.** That
+was a real bug in the cost model and it is fixed, and the conclusion
+survives the fix. An agent declining to trade this remains correct
+behaviour.
+
+Not settled:
+
+- One 45-day window (Jun–Jul 2026) in one regime. Other periods may differ.
+- Quintile spread is a ceiling on a *single-feature* strategy. It does not
+  rule out an edge from feature combinations, which is what the DQN was for.
+- Adverse selection is still unmeasured, so `maker_adverse_selection` remains
+  at its optimistic zero. The real maker floor is *higher* than 0.04%, which
+  makes the negative result more robust, not less.
+
+The honest reading: the cost model was wrong, the user was right to
+challenge it, and correcting it does not change the answer.
