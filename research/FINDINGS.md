@@ -1,0 +1,97 @@
+# Findings — BTC spot/perp carry on Bybit
+
+Status: **smoke test only. Not a backtest. No capital should move on this.**
+
+## The question
+
+Long BTC spot + short BTCUSDT perp under Portfolio Margin, collecting funding.
+Earlier working assumption was a ~3–5%/yr net carry premium. Does the premium
+actually exist?
+
+## Account setup (verified, done)
+
+Portfolio Margin and Spot Hedging are both enabled on the live account. There
+was no application, no approval queue, and no minimum-equity gate — it is a
+self-serve toggle at **Assets → Unified Trading → the margin-mode pill**, not
+in Account Settings. Prerequisites (UTA, no options positions, no borrowings,
+no hedge-mode positions) were all trivially met on an empty account.
+
+## Hard constraint (verified from tick data)
+
+The smallest trades in the BTCUSDT perp archive are exactly 0.001 BTC, which
+confirms the minimum lot. With BTC at $62,858 (2026-08-01 VWAP, from the data):
+
+| | |
+|---|---|
+| min perp order | 0.001 BTC = **$62.86** notional |
+| matching spot leg | **$62.86** — cannot be leveraged into existence |
+| **minimum viable hedge** | **≈ $126** |
+
+Spot is the binding leg. Perp margin can be levered down; spot cannot. Any
+account that cannot fund ~$63 of unleveraged spot cannot construct the hedge
+at all — it can only hold a naked leveraged perp, which is a different trade
+with a different risk profile.
+
+## First look at the basis
+
+Eight days sampled across 2023–2026 via `basis_probe.py`:
+
+```
+date           spotVWAP   perpVWAP  basis_bp     ann%  hrs
+2023-01-15      20776.0    20781.5      2.63    28.76   24
+2023-07-15      30309.2    30293.2     -5.30   -58.01   24
+2024-01-15      42615.4    42624.0      2.02    22.17   24
+2024-07-15      62919.0    62904.2     -2.34   -25.61   24
+2025-01-15      98100.4    98082.5     -1.83   -20.02   24
+2025-07-15     117285.5   117291.8      0.54     5.92   24
+2026-01-15      96290.0    96236.9     -5.52   -60.46   24
+2026-07-15      64895.0    64871.0     -3.69   -40.45   24
+
+mean basis -1.69 bp  ->  ~-18.46% APR gross
+days positive: 3/8
+```
+
+Two observations:
+
+1. **Sign is wrong on average.** Mean basis is negative — the perp traded
+   *below* spot. For long-spot/short-perp, that means paying funding rather
+   than collecting it. Only 3 of 8 days were positive.
+2. **Magnitude is dwarfed by costs.** Daily basis is ±2–6 bp. Round-trip fees
+   on the two-leg hedge are ~31 bp all-taker (spot 0.1 + perp 0.055, twice).
+
+This does not support the 3–5%/yr premium assumption. It points the other way.
+
+## Why this is not yet conclusive
+
+Three real limitations, in rough order of severity:
+
+1. **VWAP basis is a proxy for funding, not funding itself.** Bybit derives
+   funding from the time-weighted impact bid/ask against the index price. Trade
+   VWAP is biased by which side is aggressing. The realised cash flow could
+   differ in sign from what is measured here. **This is the important one** —
+   it means the headline result above may simply be measuring the wrong thing.
+2. **Eight days out of ~1,400 is not a sample.** Daily values range +2.6 to
+   −5.5 bp. The variance swamps the mean at this n.
+3. **The `ann%` column overstates.** Annualising one day's 5 bp into −60% is
+   arithmetically fine and rhetorically misleading. Read `basis_bp`.
+
+## What a real backtest needs
+
+- [ ] **Actual funding-rate history**, not the VWAP proxy. Available from
+      `GET /v5/market/funding/history` on api.bybit.com. That host is
+      geo-blocked from this container but reachable from Nigeria — must be
+      pulled locally.
+- [ ] Full date range rather than sampled days (spot∩perp = 2022-11 → present).
+- [ ] Explicit fee model separating maker and taker on each leg.
+- [ ] Slippage / fill model for the two-leg entry, including leg-in risk.
+- [ ] Margin and liquidation simulation under Portfolio Margin offsets.
+
+Only after that does a minimum-capital number mean anything. Any figure quoted
+before then — including the "$2,000" floated earlier in discussion — is a guess.
+
+## Environment note
+
+`api.bybit.com` and `fapi.binance.com` both geo-block this container
+(CloudFront / region restriction). `public.bybit.com` does **not**, which is
+what made the work above possible. Anything live must run from the user's own
+machine or a VPS in a served region.
