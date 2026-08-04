@@ -63,3 +63,49 @@ def test_trades_limit_returns_most_recent(tmp_path):
     recent = journal.trades(limit=3)
     assert len(recent) == 3
     assert set(recent["pnl"]) == {9.0, 8.0, 7.0}
+
+
+# --- session scoping ----------------------------------------------------
+#
+# The journal is durable across runs by design. A caller summarising "this
+# session" therefore has to bound it, or it reports the whole file as if it
+# had just happened -- which is exactly what the paper trader did: a run that
+# took no trades printed the previous run's losses beside its own untouched
+# equity.
+
+
+def test_last_trade_id_is_zero_on_empty_journal(tmp_path):
+    assert make_journal(tmp_path).last_trade_id() == 0
+
+
+def test_trades_after_id_scopes_to_one_session(tmp_path):
+    journal = make_journal(tmp_path)
+    journal.record_trade(**trade_kwargs(exit_ts=2000, pnl=-50.0))
+    journal.record_trade(**trade_kwargs(exit_ts=2001, pnl=-25.0))
+    boundary = journal.last_trade_id()
+    journal.record_trade(**trade_kwargs(exit_ts=2002, pnl=10.0))
+
+    assert len(journal.trades()) == 3                 # whole file
+    session = journal.trades(after_id=boundary)
+    assert len(session) == 1
+    assert session["pnl"].sum() == 10.0
+
+
+def test_a_session_that_traded_nothing_reports_nothing(tmp_path):
+    """The regression: zero trades this run must not surface earlier losses."""
+    journal = make_journal(tmp_path)
+    journal.record_trade(**trade_kwargs(pnl=-926.59))
+    boundary = journal.last_trade_id()
+
+    assert journal.trades(after_id=boundary).empty
+    assert journal.trade_count() == 1   # still durable, just not ours
+
+
+def test_last_trade_id_tracks_inserts(tmp_path):
+    journal = make_journal(tmp_path)
+    assert journal.last_trade_id() == 0
+    journal.record_trade(**trade_kwargs())
+    first = journal.last_trade_id()
+    assert first > 0
+    journal.record_trade(**trade_kwargs(exit_ts=3000))
+    assert journal.last_trade_id() > first

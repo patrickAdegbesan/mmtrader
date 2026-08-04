@@ -128,8 +128,23 @@ class TradeJournal:
     def trade_count(self) -> int:
         return int(self._conn.execute("SELECT COUNT(*) FROM trades").fetchone()[0])
 
-    def trades(self, limit: int | None = None) -> pd.DataFrame:
-        query = "SELECT * FROM trades ORDER BY exit_ts"
+    def last_trade_id(self) -> int:
+        """Highest trade id currently stored, or 0 when empty.
+
+        Take this before a run and pass it back as `trades(after_id=...)` to
+        read only what that run produced. The journal is deliberately durable
+        across runs, so any caller summarising "this session" has to say where
+        the session started -- otherwise it reports the whole file's history
+        as if it had just happened.
+        """
+        row = self._conn.execute("SELECT MAX(id) FROM trades").fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+
+    def trades(self, limit: int | None = None, after_id: int | None = None) -> pd.DataFrame:
+        query = "SELECT * FROM trades"
+        if after_id is not None:
+            query += f" WHERE id > {int(after_id)}"
+        query += " ORDER BY exit_ts"
         if limit is not None:
             query += f" DESC LIMIT {int(limit)}"
         df = pd.read_sql_query(query, self._conn)

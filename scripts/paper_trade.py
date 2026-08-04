@@ -179,12 +179,18 @@ def main() -> int:
                 trader.check_feed_health()
         threading.Thread(target=watchdog_loop, daemon=True, name="watchdog").start()
 
+    # The journal persists across runs, so "this session" has to be bounded
+    # explicitly. Without this the summary reports every trade the file has
+    # ever held: a run that took no trades still printed the previous run's
+    # losses next to its own untouched final equity.
+    session_start_id = journal.last_trade_id()
+
     try:
         trader.run(feed, max_bars=args.max_bars)
     except KeyboardInterrupt:
         print("\nStopped by user.")
 
-    trades = journal.trades()
+    trades = journal.trades(after_id=session_start_id)
     print(f"\n=== Paper trading session summary ({mode}) ===")
     print(f"bars processed:  {trader._bars_processed}")
     print(f"closed trades:   {len(trades)}")
@@ -193,7 +199,11 @@ def main() -> int:
         print(f"total pnl:       {trades['pnl'].sum():+.2f}")
         print(f"total fees:      {trades['fees'].sum():.2f}")
         print(f"avg R:           {trades['r_multiple'].mean():+.3f}")
+    else:
+        print("                 (took no trades this session)")
     print(f"final equity:    {trader.equity:,.2f} (from {trader.initial_equity:,.2f})")
+    if journal.trade_count() > len(trades):
+        print(f"journal total:   {journal.trade_count()} trades incl. earlier sessions")
     print(f"journal:         {journal.path}")
     print(f"dashboard:       {dashboard.path}")
     return 0
