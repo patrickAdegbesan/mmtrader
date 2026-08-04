@@ -21,6 +21,25 @@ Method, and its limits:
   Forward returns are computed from bar close to bar close `horizon` bars
   ahead, with no execution modelled. Costs are taken from CostModel.
 
+## The null baseline, and why it is not optional
+
+Run this without a control and it lies. On a synthetic random walk -- no
+edge by construction -- the first version of this script reported sma_9
+clearing the maker floor at 1.96x and 5 of 19 features "passing".
+
+Two things produce that. Raw price levels (sma_9, ema_21, the moving
+averages themselves) are not signals: quintiling a dollar price over a
+period when price drifted sorts bars by *when they happened*, so the
+"spread" is the drift. Those are excluded below. And any feature shows some
+spread by chance, so a raw number means nothing without knowing what chance
+looks like.
+
+So every run also measures a surrogate: the same bars with their returns
+shuffled, which destroys temporal structure while preserving the return
+distribution exactly. Features are recomputed on that. Whatever spread
+survives is what this method manufactures from noise. Only the excess over
+that baseline is evidence of anything.
+
 Usage:
 
     python3 research/cost_floor_diagnostic.py bars_1m.csv [horizon]
@@ -50,7 +69,14 @@ NOT_FEATURES = {
     "volatility_regime", "session", "fwd_return",
 }
 
+# Absolute price levels in dollars. Not signals -- quintiling them sorts by
+# where price happened to be, so on any trending sample they report the drift
+# as edge. The distance/position features derived from them are fine; these
+# raw levels are not.
+PRICE_LEVELS = {"sma_9", "sma_21", "ema_9", "ema_21"}
+
 QUINTILES = 5
+NULL_SEED = 0
 
 
 def quintile_spread(df: pd.DataFrame, col: str) -> tuple[float, float, float] | None:
@@ -68,25 +94,57 @@ def quintile_spread(df: pd.DataFrame, col: str) -> tuple[float, float, float] | 
     return float(means.max() - means.min()), float(means.max()), float(means.min())
 
 
+def shuffle_returns(df: pd.DataFrame, seed: int = NULL_SEED) -> pd.DataFrame:
+    """Surrogate series: same returns, random order.
+
+    Preserves the return distribution (so volatility, fat tails and the
+    resulting feature scales all match) while destroying the temporal
+    structure any real signal would live in. Spread measured here is the
+    method's false-positive rate, not an edge.
+    """
+    rng = np.random.default_rng(seed)
+    rets = df["close"].pct_change().dropna().to_numpy(copy=True)
+    rng.shuffle(rets)
+
+    close = df["close"].iloc[0] * np.cumprod(np.r_[1.0, 1.0 + rets])
+    scale = close / df["close"].to_numpy()
+
+    out = df.copy()
+    for col in ("open", "high", "low", "close"):
+        out[col] = df[col].to_numpy() * scale
+    return out
+
+
+def spreads_for(df: pd.DataFrame, horizon: int) -> dict[str, tuple[float, float, float]]:
+    feat = extract_features(df.copy())
+    feat["fwd_return"] = feat["close"].shift(-horizon) / feat["close"] - 1.0
+    cols = [
+        c for c in feat.columns
+        if c not in NOT_FEATURES
+        and c not in PRICE_LEVELS
+        and pd.api.types.is_numeric_dtype(feat[c])
+    ]
+    out = {}
+    for c in cols:
+        got = quintile_spread(feat, c)
+        if got:
+            out[c] = got
+    return out
+
+
 def main(path: str, horizon: int) -> None:
     df = pd.read_csv(path)
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s")
     df = df.sort_values("timestamp").reset_index(drop=True)
 
-    feat = extract_features(df)
-    feat["fwd_return"] = feat["close"].shift(-horizon) / feat["close"] - 1.0
+    real = spreads_for(df, horizon)
+    null = spreads_for(shuffle_returns(df), horizon)
 
-    cols = [
-        c for c in feat.columns
-        if c not in NOT_FEATURES and pd.api.types.is_numeric_dtype(feat[c])
+    rows = [
+        (name, spread, best, worst, null.get(name, (0.0,))[0])
+        for name, (spread, best, worst) in real.items()
     ]
-
-    rows = []
-    for c in cols:
-        got = quintile_spread(feat, c)
-        if got:
-            rows.append((c, *got))
-    rows.sort(key=lambda r: -r[1])
+    rows.sort(key=lambda r: -(r[1] - r[4]))
 
     taker = PERP.round_trip_cost("low", "taker")
     maker = PERP.round_trip_cost("low", "maker")
@@ -101,24 +159,35 @@ def main(path: str, horizon: int) -> None:
     print(f"  perp maker  {maker:.5f}  ({maker*100:.3f}%)   <- what the executor aims for")
     print(f"  spot taker  {spot_taker:.5f}  ({spot_taker*100:.3f}%)   <- current config category")
     print()
-    print(f"{'feature':24} {'spread%':>9} {'best%':>8} {'worst%':>8}  {'vs taker':>9} {'vs maker':>9}")
-    print("-" * 76)
-    for name, spread, best, worst in rows:
-        print(f"{name:24} {spread*100:9.4f} {best*100:8.4f} {worst*100:8.4f} "
-              f"{spread/taker:9.2f}x {spread/maker:9.2f}x")
-
     if not rows:
         print("no features produced a usable quintile spread")
         return
 
-    beats_taker = [r for r in rows if r[1] > taker]
-    beats_maker = [r for r in rows if r[1] > maker]
+    print(f"{'feature':24} {'spread%':>9} {'null%':>8} {'excess%':>9} "
+          f"{'vs taker':>9} {'vs maker':>9}")
     print("-" * 76)
-    print(f"features clearing perp taker floor: {len(beats_taker)}/{len(rows)}")
-    print(f"features clearing perp maker floor: {len(beats_maker)}/{len(rows)}")
-    print(f"best spread {rows[0][1]*100:.4f}% ({rows[0][0]})")
+    for name, spread, _best, _worst, null_spread in rows:
+        excess = spread - null_spread
+        print(f"{name:24} {spread*100:9.4f} {null_spread*100:8.4f} {excess*100:9.4f} "
+              f"{excess/taker:9.2f}x {excess/maker:9.2f}x")
+
+    beats_taker = [r for r in rows if (r[1] - r[4]) > taker]
+    beats_maker = [r for r in rows if (r[1] - r[4]) > maker]
+    best_name, best_spread, _, _, best_null = rows[0]
+    best_excess = best_spread - best_null
+
+    print("-" * 76)
+    print(f"excess over null clearing perp taker floor: {len(beats_taker)}/{len(rows)}")
+    print(f"excess over null clearing perp maker floor: {len(beats_maker)}/{len(rows)}")
+    print(f"best excess {best_excess*100:.4f}% ({best_name}: "
+          f"{best_spread*100:.4f}% real - {best_null*100:.4f}% null)")
+    print(f"median null spread {np.median([r[4] for r in rows])*100:.4f}% "
+          f"<- what this method invents from noise")
     print()
-    print("Reminder: the spread is a ceiling, not an edge. It assumes perfect")
+    print("Read the excess column, not the spread column. Spread alone counts")
+    print("the method's own false positives as edge.")
+    print()
+    print("And excess is still a ceiling, not an edge: it assumes perfect")
     print("sorting into the tails and models no execution. Clearing the maker")
     print("floor here is necessary for a strategy to work, nowhere near")
     print("sufficient -- adverse selection is not in these numbers.")
