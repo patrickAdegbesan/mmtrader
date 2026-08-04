@@ -118,3 +118,74 @@ whether the carry turns out to be positive.
 (CloudFront / region restriction). `public.bybit.com` does **not**, which is
 what made the work above possible. Anything live must run from the user's own
 machine or a VPS in a served region.
+
+---
+
+# Open issue — the cost model contradicts the executor
+
+Raised by the user, and it looks correct. Recording it because it may
+overturn the central "no edge" finding in `docs/STATUS.md`.
+
+## The contradiction
+
+`src/cognition/execution/executor.py` posts **maker** orders by design. Its
+own docstring:
+
+> quote as a maker first (limit at the near touch, post-only where
+> supported), poll for the fill, and only cross the spread with a market
+> order for the unfilled remainder after a timeout — *scalping lives and
+> dies on fees, so we pay taker only when we must.*
+
+`src/cognition/backtest/costs.py` has no maker path at all:
+
+```python
+def round_trip_cost(self, volatility_regime):
+    return 2 * self.taker_fee + 2 * self.slippage_rate(volatility_regime)
+```
+
+Taker on every fill, adverse slippage on both legs. **The backtest prices a
+strategy the system does not run.**
+
+## Why it may matter
+
+| | round-trip cost |
+|---|---|
+| backtest as configured | 0.4% – 1.2% |
+| perp maker, filled at the touch | ~0.04% |
+| measured feature quintile spread | **0.6%** |
+
+Against 0.4% the signal loses, and an agent that declines to trade is
+behaving correctly — that is STATUS's conclusion. Against 0.04% the same
+signal clears the floor by an order of magnitude. The conclusion may be an
+artifact of the cost assumption rather than a property of the market.
+
+## Why it may not
+
+Three reasons not to get excited yet:
+
+1. **Adverse selection is the real maker cost, and neither model has it.**
+   Resting orders fill when the market is about to run you over and miss
+   when it is about to go your way. A maker backtest that assumes fills at
+   the touch is optimistic in exactly the way the current one is
+   pessimistic. Fill probability has to be modelled before either number
+   means anything.
+2. **`config.yaml` sets `category: spot`.** Bybit spot charges maker and
+   taker the same 0.1%, so on spot the maker path saves slippage but no
+   fees. The fee saving above is a *perp* number — realising it is a change
+   of venue, not just of order type.
+3. **The executor falls back to taker** on the unfilled remainder after
+   `limit_timeout_seconds`, so realised cost is a blend, not the maker rate.
+
+## What would settle it
+
+- [ ] Add maker/taker as separate rates in `CostModel` rather than one
+      `taker_fee`, so a backtest can price the strategy the executor runs.
+- [ ] Model fill probability for resting orders, including the case where
+      the fill is itself the bad news. Without this, maker backtests lie.
+- [ ] Re-run the feature/label diagnostic under the maker cost floor and see
+      whether the 0.6% spread survives.
+- [ ] Decide spot vs perp deliberately — the fee structures differ enough to
+      change which strategies are viable.
+
+Until then STATUS's "no edge" should be read as **"no edge at taker cost"**,
+which is a narrower claim than it currently appears to make.
