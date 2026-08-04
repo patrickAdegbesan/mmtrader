@@ -260,3 +260,76 @@ Not settled:
 
 The honest reading: the cost model was wrong, the user was right to
 challenge it, and correcting it does not change the answer.
+
+---
+
+# Paper trading — the trained ensemble declines to trade
+
+Trained the full 5-agent ensemble on the 64,800 real 1m bars
+(`scripts/train_ensemble.py --episodes 40`), then evaluated on the held-out
+20% slice. This is the first time the system has been trained and paper
+traded on real data rather than synthetic.
+
+## Every agent independently converged on "flat"
+
+| agent | untrained total R | trained | trades after training |
+|---|---|---|---|
+| momentum | −176.20 | **−4.28** | 6 |
+| mean_reversion | −224.94 | **0.00** | 0 |
+| volume_breakout | −354.08 | **0.00** | 0 |
+| microstructure | −961.06 | **0.00** | 0 |
+
+Ensemble on the eval slice: **0 trades, 0 fees, equity unchanged at 10,000**.
+
+## It is deciding, not failing
+
+The run logged **12,960 decision entries** — one per eval bar, each with the
+individual agent votes recorded. A sample:
+
+```
+regime sideways | score 0.0 | direction 0
+votes: momentum(0, 0.2411)  mean_reversion(0, 0.2765)
+       volume_breakout(0, 0.2697)  microstructure(0, 0.2654)
+```
+
+Four agents, each evaluated the bar, each returned direction 0. A crashed or
+mis-wired pipeline does not produce 12,960 audited abstentions with
+per-agent confidences attached.
+
+## What the untrained agents show it avoided
+
+The baseline evals are the counterfactual — the same agents before learning,
+trading freely:
+
+| agent | trades | win rate | final equity from 10,000 |
+|---|---|---|---|
+| microstructure | 1,684 | 0.24% | **$1.82** |
+| volume_breakout | 424 | 0.71% | $1,334 |
+| mean_reversion | 272 | 2.57% | $2,067 |
+| momentum | 143 | 5.59% | $4,471 |
+
+Trading this market destroyed 82–99.98% of capital. Declining to trade
+preserved all of it. "Stop trading" is not the agent giving up; it is the
+agent finding the only non-losing action available.
+
+## Why this matters more than the diagnostic
+
+The cost-floor diagnostic and this run are independent methods that agree.
+The diagnostic measured signal against cost analytically and found the
+signal ~8x too small. The ensemble was handed capital, a full action space
+and a reward for making money, and chose to sit out. Neither result depends
+on the other being right.
+
+Combined with the cost-model correction — which was a real bug, fixed, and
+did not change the conclusion — the negative finding for indicator-based
+trading on BTC 1m candles should now be considered well established rather
+than provisional.
+
+## Caveats that remain
+
+- 45 days, one regime (Jun–Jul 2026). The eval slice is ~13k bars.
+- 40 episodes is a short run; `config.yaml` suggests 300 for a full pass.
+  More training would not plausibly *create* an edge the diagnostic says is
+  absent, but the specific numbers above would move.
+- `maker_adverse_selection` is still 0, so the cost floor used is the
+  optimistic one. The real floor is higher, which strengthens the result.
